@@ -19,7 +19,13 @@ import {
   setActiveContent,
   updatePlayback
 } from "../services/content.service.js";
-import { listMessages, listPinnedMessages } from "../services/message.service.js";
+import { getMessageRetentionDays } from "../services/settings.service.js";
+import {
+  countRoomMessages,
+  listMessages,
+  listPinnedMessages,
+  listRoomMessageRanking
+} from "../services/message.service.js";
 
 const optionalUrl = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? null : value),
@@ -28,9 +34,13 @@ const optionalUrl = z.preprocess(
 
 const roomSchema = z.object({
   name: z.string().trim().min(2).max(80),
+  slug: z.string().trim().max(80).optional(),
+  type: z.enum(["rave", "group"]).default("rave"),
   description: z.string().trim().min(8).max(500),
   category: z.string().trim().min(2).max(60),
   bannerUrl: optionalUrl,
+  coverUrl: optionalUrl,
+  backgroundUrl: optionalUrl,
   isActive: z.boolean().optional()
 });
 
@@ -88,9 +98,23 @@ export async function roomsRoutes(app: FastifyInstance) {
     const playback = getPlaybackState(room.id);
     const contents = listRoomContents(room.id);
     const participants = listParticipants(room.id);
-    const messages = listMessages(room.id);
+    const messages = listMessages(room.id, 80, request.currentUser!.id);
     const pinnedMessages = listPinnedMessages(room.id);
-    return { room, participant, contents, playback, participants, messages, pinnedMessages };
+    const messageCount = countRoomMessages(room.id);
+    const messageRanking = listRoomMessageRanking(room.id);
+    const messageRetentionDays = getMessageRetentionDays();
+    return {
+      room,
+      participant,
+      contents,
+      playback,
+      participants,
+      messages,
+      pinnedMessages,
+      messageCount,
+      messageRanking,
+      messageRetentionDays
+    };
   });
 
   app.get("/rooms/:id/participants", { preHandler: authenticate }, async (request) => {

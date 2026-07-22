@@ -13,4 +13,6 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 dev-server.log
+dev-server-error.log
 dev-mobile*.log
+api-mobile*.log

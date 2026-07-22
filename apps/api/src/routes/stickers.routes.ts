@@ -5,7 +5,8 @@ import {
   addSticker,
   createStickerPack,
   deleteSticker,
-  listStickerPacks
+  listStickerPacks,
+  saveStickerFromMessage
 } from "../services/sticker.service.js";
 
 const packSchema = z.object({
@@ -31,6 +32,11 @@ export async function stickersRoutes(app: FastifyInstance) {
     const params = z.object({ packId: z.string() }).parse(request.params);
     const input = stickerSchema.parse(request.body);
     return { sticker: addSticker(params.packId, request.currentUser!.id, input.uploadId, input.name) };
+  });
+
+  app.post("/stickers/:id/save", { preHandler: authenticate }, async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    return { sticker: saveStickerFromMessage(params.id, request.currentUser!.id) };
   });
 
   app.delete("/stickers/:id", { preHandler: authenticate }, async (request) => {

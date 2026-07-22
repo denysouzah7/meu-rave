@@ -16,19 +16,24 @@ import {
   updatePlayback
 } from "../services/content.service.js";
 import {
+  countRoomMessages,
   createAudioFromUpload,
   createMessage,
   listMessages,
+  listPinnedMessages,
+  listRoomMessageRanking,
   pinMessage,
   softDeleteMessage,
   toggleMessageLike,
-  userCanDeleteMessage
+  userCanDeleteMessage,
+  votePoll
 } from "../services/message.service.js";
 import {
   assertCanChat,
   assertCanSendAudio,
   assertRoomModerator
 } from "../services/permission.service.js";
+import { getMessageRetentionDays } from "../services/settings.service.js";
 import { forbidden } from "../utils/http.js";
 
 type AuthedSocket = Socket & {
@@ -91,7 +96,11 @@ export function registerSocket(io: Server) {
           contents: listRoomContents(room.id),
           playback,
           participants: listParticipants(room.id),
-          messages: listMessages(room.id)
+          messages: listMessages(room.id, 80, socket.data.userId),
+          pinnedMessages: listPinnedMessages(room.id),
+          messageCount: countRoomMessages(room.id),
+          messageRanking: listRoomMessageRanking(room.id),
+          messageRetentionDays: getMessageRetentionDays()
         });
         emitParticipants(io, room.id);
       } catch (error) {
@@ -113,12 +122,18 @@ export function registerSocket(io: Server) {
     socket.on(
       "chat:message",
       (payload: {
-        type: "text" | "sticker" | "audio";
+        type: "text" | "sticker" | "audio" | "image" | "poll";
         body?: string;
         replyToMessageId?: string | null;
         stickerId?: string | null;
         audioUploadId?: string | null;
         audioDurationSeconds?: number;
+        imageUploadId?: string | null;
+        poll?: {
+          question: string;
+          options: string[];
+          allowsMultiple?: boolean;
+        } | null;
       }) => {
         try {
           const roomId = socket.data.roomId;
@@ -148,14 +163,34 @@ export function registerSocket(io: Server) {
             body: payload.body,
             replyToMessageId: payload.replyToMessageId,
             stickerId: payload.stickerId,
-            audioId
+            audioId,
+            imageUploadId: payload.imageUploadId,
+            poll: payload.poll
           });
-          io.to(channel(roomId)).emit("chat:message", { message });
+          io.to(channel(roomId)).emit("chat:message", {
+            message,
+            messageCount: countRoomMessages(roomId),
+            messageRanking: listRoomMessageRanking(roomId)
+          });
         } catch (error) {
           socketError(socket, error);
         }
       }
     );
+
+    socket.on("poll:vote", (payload: { pollId: string; optionId: string }) => {
+      try {
+        const roomId = socket.data.roomId;
+        if (!roomId) {
+          throw forbidden("Entre em uma sala primeiro");
+        }
+        assertCanChat(roomId, socket.data.userId);
+        const poll = votePoll(roomId, payload.pollId, payload.optionId, socket.data.userId);
+        io.to(channel(roomId)).emit("poll:update", { poll });
+      } catch (error) {
+        socketError(socket, error);
+      }
+    });
 
     socket.on("chat:like", (payload: { messageId: string }) => {
       try {
@@ -175,7 +210,11 @@ export function registerSocket(io: Server) {
           assertRoomModerator(permission.roomId, socket.data.userId);
         }
         const deleted = softDeleteMessage(payload.messageId);
-        io.to(channel(deleted.roomId)).emit("chat:delete", { messageId: deleted.id });
+        io.to(channel(deleted.roomId)).emit("chat:delete", {
+          messageId: deleted.id,
+          messageCount: countRoomMessages(deleted.roomId),
+          messageRanking: listRoomMessageRanking(deleted.roomId)
+        });
       } catch (error) {
         socketError(socket, error);
       }

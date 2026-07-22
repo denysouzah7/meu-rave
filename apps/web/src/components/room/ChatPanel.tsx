@@ -1,14 +1,18 @@
 import * as React from "react";
 import {
+  BarChart3,
   ChevronDown,
+  Check,
   Copy,
   Heart,
   ImagePlus,
+  Loader2,
   Mic,
   Paperclip,
   Pause,
   Pin,
   Play,
+  Plus,
   Reply,
   Send,
   Smile,
@@ -26,12 +30,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn, formatDuration } from "@/lib/utils";
+import { createMediaBackgroundStyle } from "@/lib/media";
 
 const MAX_AUDIO_DURATION_SECONDS = 120;
 
 type Props = {
   roomName: string;
   onlineCount: number;
+  backgroundUrl?: string | null | undefined;
   messages: ChatMessage[];
   currentUserId: string;
   participant: Participant | null;
@@ -39,13 +45,20 @@ type Props = {
   className?: string;
   onOpenRoomInfo: () => void;
   onSend: (payload: {
-    type: "text" | "sticker" | "audio";
+    type: "text" | "sticker" | "audio" | "image" | "poll";
     body?: string | undefined;
     replyToMessageId?: string | null | undefined;
     stickerId?: string | null | undefined;
     audioUploadId?: string | null | undefined;
     audioDurationSeconds?: number | undefined;
+    imageUploadId?: string | null | undefined;
+    poll?: {
+      question: string;
+      options: string[];
+      allowsMultiple?: boolean | undefined;
+    } | null | undefined;
   }) => void;
+  onPollVote: (pollId: string, optionId: string) => void;
   onLike: (messageId: string) => void;
   onDelete: (messageId: string) => void;
   onPin: (messageId: string, isPinned: boolean) => void;
@@ -54,6 +67,7 @@ type Props = {
 export function ChatPanel({
   roomName,
   onlineCount,
+  backgroundUrl,
   messages,
   currentUserId,
   participant,
@@ -61,6 +75,7 @@ export function ChatPanel({
   className,
   onOpenRoomInfo,
   onSend,
+  onPollVote,
   onLike,
   onDelete,
   onPin
@@ -69,10 +84,30 @@ export function ChatPanel({
   const [replyTo, setReplyTo] = React.useState<ChatMessage | null>(null);
   const [openActionsId, setOpenActionsId] = React.useState<string | null>(null);
   const [showStickers, setShowStickers] = React.useState(false);
+  const [showAttachments, setShowAttachments] = React.useState(false);
+  const [showPollComposer, setShowPollComposer] = React.useState(false);
+  const [uploadingImage, setUploadingImage] = React.useState(false);
+  const [composerError, setComposerError] = React.useState("");
   const messagesViewportRef = React.useRef<HTMLDivElement | null>(null);
   const messageBoxRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const imageInputRef = React.useRef<HTMLInputElement | null>(null);
   const touchSendHandledRef = React.useRef(false);
   const messageById = React.useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages]);
+  const messageBackgroundStyle = React.useMemo(
+    () => createMediaBackgroundStyle(backgroundUrl, 0.74),
+    [backgroundUrl]
+  );
+  const queryClient = useQueryClient();
+  const saveSticker = useMutation({
+    mutationFn: (stickerId: string) => api<{ sticker: Sticker }>(`/stickers/${stickerId}/save`, { method: "POST" }),
+    onSuccess: async () => {
+      setComposerError("");
+      await queryClient.invalidateQueries({ queryKey: ["stickers", "packs"] });
+    },
+    onError: (error) => {
+      setComposerError(error instanceof Error ? error.message : "Nao foi possivel salvar a figurinha.");
+    }
+  });
 
   const scrollMessagesToBottom = React.useCallback((behavior: ScrollBehavior = "auto") => {
     const viewport = messagesViewportRef.current;
@@ -108,17 +143,46 @@ export function ChatPanel({
     });
     setBody("");
     setReplyTo(null);
+    setShowAttachments(false);
     window.requestAnimationFrame(() => {
       messageBoxRef.current?.focus({ preventScroll: true });
     });
   }, [body, canChat, onSend, replyTo?.id]);
+
+  const sendImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !canChat) return;
+
+    setComposerError("");
+    setUploadingImage(true);
+    setShowStickers(false);
+    setShowAttachments(false);
+    setShowPollComposer(false);
+
+    try {
+      const result = await uploadFile("image", file);
+      onSend({
+        type: "image",
+        imageUploadId: result.upload.id,
+        body: body.trim() || undefined,
+        replyToMessageId: replyTo?.id
+      });
+      setBody("");
+      setReplyTo(null);
+    } catch (error) {
+      setComposerError(error instanceof Error ? error.message : "Nao foi possivel enviar a imagem.");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   let previousDay = "";
 
   return (
     <Card
       className={cn(
-        "room-chat-panel flex h-[min(760px,calc(100vh-96px))] min-h-[360px] flex-col overflow-hidden border-white/10 bg-[#0b141a] shadow-2xl max-sm:h-[min(520px,56svh)] max-sm:min-h-[320px]",
+        "room-chat-panel room-panel-texture flex h-[min(760px,calc(100vh-96px))] min-h-[360px] flex-col overflow-hidden border-white/10 shadow-2xl max-sm:h-[min(520px,56svh)] max-sm:min-h-[320px]",
         className
       )}
     >
@@ -145,7 +209,8 @@ export function ChatPanel({
       <CardContent className="room-chat-body flex min-h-0 flex-1 flex-col overflow-hidden p-0">
         <div
           ref={messagesViewportRef}
-          className="room-chat-messages thin-scrollbar min-h-0 flex-1 overscroll-contain overflow-y-auto scroll-pb-4 bg-[#071014] p-3 pb-4"
+          className="room-chat-messages room-wallpaper thin-scrollbar min-h-0 flex-1 overscroll-contain overflow-y-auto scroll-pb-4 p-3 pb-4"
+          style={messageBackgroundStyle}
         >
           <div className="space-y-1.5">
             {messages.map((message) => {
@@ -189,6 +254,11 @@ export function ChatPanel({
                       onPin(message.id, !message.isPinned);
                       setOpenActionsId(null);
                     }}
+                    onSaveSticker={(stickerId) => {
+                      saveSticker.mutate(stickerId);
+                      setOpenActionsId(null);
+                    }}
+                    onPollVote={onPollVote}
                   />
                 </React.Fragment>
               );
@@ -213,15 +283,38 @@ export function ChatPanel({
 
           {showStickers && (
             <StickerTray
+              onClose={() => setShowStickers(false)}
               onPick={(sticker) => {
                 onSend({ type: "sticker", stickerId: sticker.id, replyToMessageId: replyTo?.id });
                 setReplyTo(null);
                 setShowStickers(false);
+                setShowAttachments(false);
               }}
             />
           )}
 
+          {showPollComposer && (
+            <PollComposer
+              onClose={() => setShowPollComposer(false)}
+              onSubmit={(poll) => {
+                onSend({ type: "poll", poll, replyToMessageId: replyTo?.id });
+                setReplyTo(null);
+                setShowAttachments(false);
+                setShowPollComposer(false);
+              }}
+            />
+          )}
+
+          {composerError && (
+            <div className="px-3 pt-2">
+              <p className="rounded-lg border border-red-400/[0.20] bg-red-500/[0.10] px-3 py-2 text-xs text-red-100">
+                {composerError}
+              </p>
+            </div>
+          )}
+
           <div className="p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+            <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" onChange={sendImage} />
             <div className="flex items-end gap-2">
               <Button
                 type="button"
@@ -229,11 +322,71 @@ export function ChatPanel({
                 variant="ghost"
                 aria-label="Figurinhas"
                 className="h-11 w-11 shrink-0 rounded-full text-[#aebac1]"
-                onClick={() => setShowStickers((value) => !value)}
+                onClick={() => {
+                  setComposerError("");
+                  setShowAttachments(false);
+                  setShowPollComposer(false);
+                  setShowStickers((value) => !value);
+                }}
               >
                 <Smile className="h-5 w-5" />
               </Button>
-              <div className="min-w-0 flex-1 rounded-[22px] bg-[#202c33] px-1">
+              <div className="relative shrink-0">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant={showAttachments || showPollComposer ? "secondary" : "ghost"}
+                  aria-label="Anexos"
+                  aria-expanded={showAttachments}
+                  disabled={!canChat || uploadingImage}
+                  className="h-11 w-11 rounded-full text-[#aebac1]"
+                  onClick={() => {
+                    setComposerError("");
+                    setShowStickers(false);
+                    if (!showAttachments) {
+                      setShowPollComposer(false);
+                    }
+                    setShowAttachments((value) => !value);
+                  }}
+                >
+                  {uploadingImage ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
+                </Button>
+
+                {showAttachments && (
+                  <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-50 w-56 rounded-2xl border border-white/10 bg-[#182229] p-2 shadow-2xl">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-white transition hover:bg-white/[0.06]"
+                      onClick={() => {
+                        setShowAttachments(false);
+                        setShowPollComposer(false);
+                        imageInputRef.current?.click();
+                      }}
+                    >
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#b91c7d] text-white">
+                        <ImagePlus className="h-4 w-4" />
+                      </span>
+                      Foto
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-white transition hover:bg-white/[0.06]"
+                      onClick={() => {
+                        setComposerError("");
+                        setShowStickers(false);
+                        setShowAttachments(false);
+                        setShowPollComposer((value) => !value);
+                      }}
+                    >
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#0f766e] text-white">
+                        <BarChart3 className="h-4 w-4" />
+                      </span>
+                      Enquete
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1 rounded-[24px] bg-[#202c33] px-1">
                 <Textarea
                   ref={messageBoxRef}
                   rows={1}
@@ -258,7 +411,7 @@ export function ChatPanel({
                   data-lpignore="true"
                   data-1p-ignore="true"
                   data-bwignore="true"
-                  className="max-h-24 min-h-11 overflow-y-auto rounded-[22px] border-0 bg-transparent px-3 py-2.5 text-[15px] leading-6 focus:ring-0"
+                  className="max-h-28 min-h-12 overflow-y-auto rounded-[24px] border-0 bg-transparent px-3.5 py-3 text-[15px] leading-6 focus:ring-0"
                 />
               </div>
               {body.trim() ? (
@@ -314,7 +467,9 @@ function MessageBubble({
   onCopy,
   onLike,
   onDelete,
-  onPin
+  onPin,
+  onSaveSticker,
+  onPollVote
 }: {
   message: ChatMessage;
   replyToMessage: ChatMessage | null;
@@ -327,6 +482,8 @@ function MessageBubble({
   onLike: () => void;
   onDelete: () => void;
   onPin: () => void;
+  onSaveSticker: (stickerId: string) => void;
+  onPollVote: (pollId: string, optionId: string) => void;
 }) {
   const [dragX, setDragX] = React.useState(0);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -334,6 +491,7 @@ function MessageBubble({
   const longPressTimer = React.useRef<number | null>(null);
   const canDelete = own || canModerate;
   const canCopy = Boolean(message.body);
+  const canSaveSticker = message.type === "sticker" && Boolean(message.stickerId);
   const dragDirection = own ? -1 : 1;
 
   const clearLongPress = () => {
@@ -398,6 +556,8 @@ function MessageBubble({
     );
   }
 
+  const isSticker = message.type === "sticker";
+
   return (
     <div className={cn("group relative flex items-end gap-2 py-0.5", own ? "justify-end" : "justify-start")}>
       {isDragging && (
@@ -423,23 +583,31 @@ function MessageBubble({
       >
         <div
           className={cn(
-            "relative min-w-0 rounded-2xl shadow-sm ring-1 ring-white/[0.03]",
-            message.type === "sticker" && "p-1.5",
-            message.type === "audio" && "px-2.5 py-1.5",
-            message.type !== "sticker" && message.type !== "audio" && "px-3 py-2",
-            own
-              ? "rounded-br-md bg-[#005c4b] text-white"
-              : "rounded-bl-md bg-[#202c33] text-[#e9edef]"
+            "relative min-w-0 rounded-2xl",
+            isSticker
+              ? "bg-transparent p-0 shadow-none ring-0"
+              : [
+                  "shadow-sm ring-1 ring-white/[0.03]",
+                  message.type === "image" && "p-1",
+                  message.type === "audio" && "px-2 py-1",
+                  message.type === "poll" && "px-3 py-2.5",
+                  !["audio", "image", "poll"].includes(message.type) && "px-3 py-2",
+                  own
+                    ? "rounded-br-md bg-[#005c4b] text-white"
+                    : "rounded-bl-md bg-[#202c33] text-[#e9edef]"
+                ]
           )}
         >
-          <span
-            className={cn(
-              "absolute bottom-0 h-3 w-3",
-              own
-                ? "-right-1 bg-[#005c4b] [clip-path:polygon(0_0,100%_100%,0_100%)]"
-                : "-left-1 bg-[#202c33] [clip-path:polygon(100%_0,100%_100%,0_100%)]"
-            )}
-          />
+          {!isSticker && (
+            <span
+              className={cn(
+                "absolute bottom-0 h-3 w-3",
+                own
+                  ? "-right-1 bg-[#005c4b] [clip-path:polygon(0_0,100%_100%,0_100%)]"
+                  : "-left-1 bg-[#202c33] [clip-path:polygon(100%_0,100%_100%,0_100%)]"
+              )}
+            />
+          )}
 
           {!own && (
             <p className="mb-0.5 truncate text-[12px] font-bold text-primary">
@@ -460,16 +628,38 @@ function MessageBubble({
             <p className="whitespace-pre-wrap break-words pr-1 text-[14.5px] leading-snug">{message.body}</p>
           )}
           {message.type === "sticker" && message.stickerUrl && (
-            <div className="rounded-xl bg-black/10 p-1">
+            <div className="space-y-1 rounded-xl bg-transparent">
               <img
                 src={resolveMediaUrl(message.stickerUrl)}
                 alt={message.stickerName ?? "Figurinha"}
-                className="h-36 w-36 rounded-lg object-contain sm:h-40 sm:w-40"
+                className="h-28 w-28 rounded-lg object-contain sm:h-32 sm:w-32"
+              />
+              <StickerAttribution
+                creatorName={message.stickerOriginalCreatorName}
+                createdAt={message.stickerOriginalCreatedAt}
               />
             </div>
           )}
           {message.type === "audio" && message.audioUrl && (
             <AudioMessage src={resolveMediaUrl(message.audioUrl)} duration={message.audioDuration ?? 0} own={own} />
+          )}
+          {message.type === "image" && message.imageUrl && (
+            <div className="min-w-[160px] max-w-[260px] sm:max-w-[290px]">
+              <div className="overflow-hidden rounded-xl bg-black/20">
+                <img
+                  src={resolveMediaUrl(message.imageUrl)}
+                  alt={message.imageName ?? "Imagem enviada"}
+                  loading="lazy"
+                  className="max-h-60 w-full object-contain sm:max-h-64"
+                />
+              </div>
+              {message.body && (
+                <p className="mt-2 whitespace-pre-wrap break-words px-1 text-[14px] leading-snug">{message.body}</p>
+              )}
+            </div>
+          )}
+          {message.type === "poll" && message.poll && (
+            <PollMessage poll={message.poll} own={own} onVote={onPollVote} />
           )}
 
           <div
@@ -511,10 +701,16 @@ function MessageBubble({
               canCopy={canCopy}
               canModerate={canModerate}
               canDelete={canDelete}
+              canSaveSticker={canSaveSticker}
               isPinned={message.isPinned}
               onReply={onReply}
               onLike={onLike}
               onCopy={onCopy}
+              onSaveSticker={() => {
+                if (message.stickerId) {
+                  onSaveSticker(message.stickerId);
+                }
+              }}
               onPin={onPin}
               onDelete={onDelete}
             />
@@ -541,6 +737,24 @@ function ReplySnippet({ message, own }: { message: ChatMessage; own: boolean }) 
   );
 }
 
+function StickerAttribution({
+  creatorName,
+  createdAt
+}: {
+  creatorName?: string | null | undefined;
+  createdAt?: string | null | undefined;
+}) {
+  if (!creatorName && !createdAt) {
+    return null;
+  }
+
+  return (
+    <p className="max-w-32 truncate rounded-full bg-black/35 px-2 py-0.5 text-[10px] font-medium text-[#e9edef]">
+      {stickerMetaLabel({ originalCreatorName: creatorName, originalCreatedAt: createdAt })}
+    </p>
+  );
+}
+
 function AudioMessage({ src, duration, own }: { src: string; duration: number; own: boolean }) {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = React.useState(false);
@@ -550,7 +764,7 @@ function AudioMessage({ src, duration, own }: { src: string; duration: number; o
   const progress = totalDuration > 0 ? Math.min(1, currentTime / totalDuration) : 0;
   const displayTime = isPlaying ? currentTime : totalDuration;
   const safeDisplayTime = Number.isFinite(displayTime) ? displayTime : 0;
-  const bars = React.useMemo(() => [12, 8, 15, 20, 10, 17, 22, 13, 18, 9, 16, 21, 11, 17, 23, 13, 19, 10], []);
+  const bars = React.useMemo(() => [9, 6, 12, 16, 8, 13, 17, 10, 14, 7, 12, 16, 9, 13], []);
 
   const togglePlayback = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -572,7 +786,7 @@ function AudioMessage({ src, duration, own }: { src: string; duration: number; o
   };
 
   return (
-    <div className="flex min-w-[205px] max-w-[72vw] items-center gap-2 py-0 sm:min-w-[235px]">
+    <div className="flex min-w-[182px] max-w-[66vw] items-center gap-2 py-0 sm:min-w-[210px]">
       <audio
         ref={audioRef}
         src={src}
@@ -592,23 +806,23 @@ function AudioMessage({ src, duration, own }: { src: string; duration: number; o
         aria-label={isPlaying ? "Pausar audio" : "Reproduzir audio"}
         title={isPlaying ? "Pausar audio" : "Reproduzir audio"}
         className={cn(
-          "grid h-8 w-8 shrink-0 place-items-center rounded-full shadow-sm transition",
+          "grid h-7 w-7 shrink-0 place-items-center rounded-full shadow-sm transition",
           own ? "bg-white text-[#005c4b]" : "bg-primary text-white"
         )}
         onClick={togglePlayback}
         onPointerDown={(event) => event.stopPropagation()}
       >
-        {isPlaying ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />}
+        {isPlaying ? <Pause className="h-3 w-3 fill-current" /> : <Play className="ml-0.5 h-3 w-3 fill-current" />}
       </button>
       <div className="min-w-0 flex-1">
-        <div className="flex h-6 items-center gap-0.5" aria-hidden="true">
+        <div className="flex h-5 items-center gap-0.5" aria-hidden="true">
           {bars.map((height, index) => {
             const filled = index / bars.length <= progress;
             return (
               <span
                 key={`${height}-${index}`}
                 className={cn(
-                  "w-1 rounded-full transition-colors",
+                  "w-0.5 rounded-full transition-colors",
                   filled ? (own ? "bg-[#d7f7ee]" : "bg-primary") : "bg-white/25"
                 )}
                 style={{ height }}
@@ -624,15 +838,214 @@ function AudioMessage({ src, duration, own }: { src: string; duration: number; o
   );
 }
 
+function PollMessage({
+  poll,
+  own,
+  onVote
+}: {
+  poll: NonNullable<ChatMessage["poll"]>;
+  own: boolean;
+  onVote: (pollId: string, optionId: string) => void;
+}) {
+  const totalVotes =
+    poll.totalVotes ?? poll.options.reduce((total, option) => total + (option.votes ?? 0), 0);
+
+  return (
+    <div className="min-w-[230px] max-w-[330px]">
+      <div className="mb-2 flex items-start gap-2">
+        <BarChart3 className={cn("mt-0.5 h-4 w-4 shrink-0", own ? "text-[#d7f7ee]" : "text-primary")} />
+        <div className="min-w-0 flex-1">
+          <p className="whitespace-pre-wrap break-words text-[14.5px] font-semibold leading-snug">
+            {poll.question}
+          </p>
+          {poll.allowsMultiple && (
+            <p className={cn("mt-0.5 text-[11px]", own ? "text-[#d7f7ee]" : "text-[#aebac1]")}>
+              Pode escolher mais de uma opcao
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        {poll.options.map((option) => {
+          const votes = option.votes ?? 0;
+          const percent = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+
+          return (
+            <button
+              key={option.id}
+              type="button"
+              className={cn(
+                "relative w-full overflow-hidden rounded-xl border px-3 py-2 text-left transition active:scale-[0.99]",
+                own
+                  ? "border-white/15 bg-black/15 hover:bg-black/20"
+                  : "border-white/10 bg-black/10 hover:bg-white/[0.04]"
+              )}
+              onClick={(event) => {
+                event.stopPropagation();
+                onVote(poll.id, option.id);
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <span
+                className={cn(
+                  "absolute inset-y-0 left-0 transition-[width]",
+                  own ? "bg-[#8fe7cf]/25" : "bg-primary/20"
+                )}
+                style={{ width: `${percent}%` }}
+                aria-hidden="true"
+              />
+              <span className="relative flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm">{option.body}</span>
+                <span className={cn("text-xs font-semibold", own ? "text-[#d7f7ee]" : "text-[#cfe9ff]")}>
+                  {percent}%
+                </span>
+                {option.votedByMe && (
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white text-[#005c4b]">
+                    <Check className="h-3.5 w-3.5" />
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <p className={cn("mt-2 text-[11px]", own ? "text-[#d7f7ee]" : "text-[#aebac1]")}>
+        {totalVotes} {totalVotes === 1 ? "voto" : "votos"}
+      </p>
+    </div>
+  );
+}
+
+function PollComposer({
+  onSubmit,
+  onClose
+}: {
+  onSubmit: (poll: { question: string; options: string[]; allowsMultiple?: boolean }) => void;
+  onClose: () => void;
+}) {
+  const [question, setQuestion] = React.useState("");
+  const [options, setOptions] = React.useState(["", ""]);
+  const [allowsMultiple, setAllowsMultiple] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  const updateOption = (index: number, value: string) => {
+    setOptions((current) => current.map((option, currentIndex) => (currentIndex === index ? value : option)));
+  };
+
+  const removeOption = (index: number) => {
+    setOptions((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  };
+
+  const submit = () => {
+    const cleanQuestion = question.trim();
+    const cleanOptions = [...new Set(options.map((option) => option.trim()).filter(Boolean))];
+
+    if (cleanQuestion.length < 3) {
+      setError("Escreva uma pergunta um pouco maior.");
+      return;
+    }
+    if (cleanOptions.length < 2) {
+      setError("Adicione pelo menos 2 opcoes.");
+      return;
+    }
+
+    setError("");
+    onSubmit({ question: cleanQuestion, options: cleanOptions, allowsMultiple });
+    setQuestion("");
+    setOptions(["", ""]);
+    setAllowsMultiple(false);
+  };
+
+  return (
+    <div className="border-t border-white/10 bg-[#111b21] p-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-white">Enquete</p>
+          <p className="truncate text-xs text-[#aebac1]">Pergunte algo para o grupo votar</p>
+        </div>
+        <Button size="icon" variant="ghost" aria-label="Fechar enquete" onClick={onClose}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <Input
+        value={question}
+        onChange={(event) => setQuestion(event.target.value)}
+        placeholder="Pergunta"
+        className="mb-2 border-0 bg-[#202c33] focus:ring-0"
+      />
+
+      <div className="space-y-2">
+        {options.map((option, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <Input
+              value={option}
+              onChange={(event) => updateOption(index, event.target.value)}
+              placeholder={`Opcao ${index + 1}`}
+              className="border-0 bg-[#202c33] focus:ring-0"
+            />
+            {options.length > 2 && (
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="Remover opcao"
+                onClick={() => removeOption(index)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <label className="inline-flex items-center gap-2 rounded-full bg-[#202c33] px-3 py-2 text-xs text-[#d1d7db]">
+          <input
+            type="checkbox"
+            checked={allowsMultiple}
+            onChange={(event) => setAllowsMultiple(event.target.checked)}
+            className="h-4 w-4 rounded border-white/20 bg-transparent"
+          />
+          Varias escolhas
+        </label>
+        <div className="flex items-center gap-2">
+          {options.length < 6 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setOptions((current) => [...current, ""])}
+            >
+              <Plus className="h-4 w-4" />
+              Opcao
+            </Button>
+          )}
+          <Button type="button" size="sm" onClick={submit}>
+            <Send className="h-4 w-4" />
+            Enviar
+          </Button>
+        </div>
+      </div>
+
+      {error && <p className="mt-2 text-xs text-red-100">{error}</p>}
+    </div>
+  );
+}
+
 function CompactActionMenu({
   own,
   canCopy,
   canModerate,
   canDelete,
+  canSaveSticker,
   isPinned,
   onReply,
   onLike,
   onCopy,
+  onSaveSticker,
   onPin,
   onDelete
 }: {
@@ -640,10 +1053,12 @@ function CompactActionMenu({
   canCopy: boolean;
   canModerate: boolean;
   canDelete: boolean;
+  canSaveSticker: boolean;
   isPinned: boolean;
   onReply: () => void;
   onLike: () => void;
   onCopy: () => void;
+  onSaveSticker: () => void;
   onPin: () => void;
   onDelete: () => void;
 }) {
@@ -659,6 +1074,9 @@ function CompactActionMenu({
       <ActionIconButton icon={<Reply className="h-4 w-4" />} label="Responder" onClick={onReply} />
       <ActionIconButton icon={<Heart className="h-4 w-4" />} label="Curtir" onClick={onLike} />
       {canCopy && <ActionIconButton icon={<Copy className="h-4 w-4" />} label="Copiar" onClick={onCopy} />}
+      {canSaveSticker && (
+        <ActionIconButton icon={<Plus className="h-4 w-4" />} label="Salvar figurinha" onClick={onSaveSticker} />
+      )}
       {canModerate && (
         <ActionIconButton
           icon={<Pin className="h-4 w-4" />}
@@ -702,11 +1120,12 @@ function ActionIconButton({
 
 type StickerPackSummary = Omit<StickerPack, "stickers">;
 
-function StickerTray({ onPick }: { onPick: (sticker: Sticker) => void }) {
+function StickerTray({ onPick, onClose }: { onPick: (sticker: Sticker) => void; onClose: () => void }) {
   const { data, isLoading } = useStickerPacks();
   const queryClient = useQueryClient();
   const [packName, setPackName] = React.useState("Favoritas");
   const [selectedPackId, setSelectedPackId] = React.useState<string | null>(null);
+  const [showPackForm, setShowPackForm] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState("");
   const fileRef = React.useRef<HTMLInputElement | null>(null);
@@ -733,6 +1152,7 @@ function StickerTray({ onPick }: { onPick: (sticker: Sticker) => void }) {
     mutationFn: createPackRequest,
     onSuccess: async (pack) => {
       setSelectedPackId(pack.id);
+      setShowPackForm(false);
       setError("");
       await queryClient.invalidateQueries({ queryKey: ["stickers", "packs"] });
     },
@@ -780,83 +1200,133 @@ function StickerTray({ onPick }: { onPick: (sticker: Sticker) => void }) {
   };
 
   return (
-    <div className="border-t border-white/10 bg-[#111b21] p-3">
+    <div className="mx-2 mt-2 rounded-2xl border border-white/10 bg-[#111b21] p-2.5 shadow-2xl">
       <input ref={fileRef} type="file" accept="image/*" className="sr-only" onChange={uploadSticker} />
 
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-white">Figurinhas</p>
-          <p className="truncate text-xs text-[#aebac1]">
+          <p className="truncate text-sm font-bold text-white">Figurinhas</p>
+          <p className="truncate text-[11px] text-[#aebac1]">
             {selectedPack ? selectedPack.name : "Crie ou envie sua primeira figurinha"}
           </p>
         </div>
-        <Button size="sm" variant="outline" disabled={uploading || isLoading} onClick={() => fileRef.current?.click()}>
-          <ImagePlus className="h-4 w-4" />
-          {uploading ? "Enviando" : "Nova"}
-        </Button>
-      </div>
-
-      <div className="mb-3 flex gap-2 rounded-lg bg-[#202c33] p-2">
-        {packs.length > 0 && (
-          <select
-            value={selectedPack?.id ?? ""}
-            onChange={(event) => setSelectedPackId(event.target.value)}
-            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#111b21] px-2 text-sm text-white outline-none"
-            aria-label="Pacote de figurinhas"
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 rounded-full"
+            aria-label="Nova figurinha"
+            title="Nova figurinha"
+            disabled={uploading || isLoading}
+            onClick={() => fileRef.current?.click()}
           >
-            {packs.map((pack) => (
-              <option key={pack.id} value={pack.id}>
-                {pack.name}
-              </option>
-            ))}
-          </select>
-        )}
-        <Input
-          value={packName}
-          onChange={(event) => setPackName(event.target.value)}
-          placeholder="Novo pacote"
-          className="min-w-0 flex-1 border-0 bg-transparent focus:ring-0"
-        />
-        <Button size="sm" variant="ghost" disabled={createPack.isPending} onClick={createPackFromInput}>
-          <Paperclip className="h-4 w-4" />
-          Pacote
-        </Button>
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+          </Button>
+          <Button
+            size="icon"
+            variant={showPackForm ? "secondary" : "ghost"}
+            className="h-8 w-8 rounded-full"
+            aria-label="Criar pacote"
+            title="Criar pacote"
+            onClick={() => {
+              setError("");
+              setShowPackForm((value) => !value);
+            }}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 rounded-full"
+            aria-label="Fechar figurinhas"
+            title="Fechar"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
-      {error && (
-        <p className="mb-3 rounded-lg border border-red-400/[0.20] bg-red-500/[0.10] p-2 text-xs text-red-100">
-          {error}
-        </p>
-      )}
-
-      {isLoading ? (
-        <div className="h-24 animate-pulse rounded-lg bg-[#202c33]" />
-      ) : visibleStickers.length === 0 ? (
-        <button
-          type="button"
-          className="w-full rounded-lg border border-dashed border-white/15 bg-[#202c33] p-4 text-center text-sm text-[#aebac1]"
-          onClick={() => fileRef.current?.click()}
-        >
-          Nenhuma figurinha ainda. Toque para enviar uma imagem.
-        </button>
-      ) : (
-        <div className="thin-scrollbar flex max-h-32 gap-2 overflow-x-auto">
-          {visibleStickers.map((sticker) => (
+      {packs.length > 0 && (
+        <div className="thin-scrollbar mt-2 flex gap-1.5 overflow-x-auto pb-1">
+          {packs.map((pack) => (
             <button
-              key={sticker.id}
+              key={pack.id}
               type="button"
-              className="h-20 w-20 shrink-0 rounded-lg bg-[#202c33] p-1 transition hover:bg-[#2a3942]"
-              onClick={() => onPick(sticker)}
+              className={cn(
+                "h-8 shrink-0 rounded-full px-3 text-xs font-semibold transition",
+                selectedPack?.id === pack.id
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-[#202c33] text-[#aebac1] hover:bg-[#2a3942] hover:text-white"
+              )}
+              onClick={() => setSelectedPackId(pack.id)}
             >
-              <img
-                src={resolveMediaUrl(sticker.imageUrl)}
-                alt={sticker.name}
-                className="h-full w-full rounded-md object-cover"
-              />
+              {pack.name}
             </button>
           ))}
         </div>
       )}
+
+      {showPackForm && (
+        <div className="mt-2 flex gap-1.5 rounded-xl bg-[#202c33] p-1.5">
+          <Input
+            value={packName}
+            onChange={(event) => setPackName(event.target.value)}
+            placeholder="Nome do pacote"
+            className="h-9 min-w-0 flex-1 border-0 bg-transparent text-sm focus:ring-0"
+          />
+          <Button
+            size="icon"
+            variant="secondary"
+            className="h-9 w-9 shrink-0 rounded-full"
+            aria-label="Salvar pacote"
+            disabled={createPack.isPending}
+            onClick={createPackFromInput}
+          >
+            {createPack.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          </Button>
+        </div>
+      )}
+
+      {error && (
+        <p className="mt-2 rounded-lg border border-red-400/[0.20] bg-red-500/[0.10] px-2.5 py-2 text-xs text-red-100">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-2">
+        {isLoading ? (
+          <div className="h-16 animate-pulse rounded-xl bg-[#202c33]" />
+        ) : visibleStickers.length === 0 ? (
+          <button
+            type="button"
+            className="w-full rounded-xl border border-dashed border-white/15 bg-[#202c33] px-3 py-3 text-center text-sm text-[#aebac1]"
+            onClick={() => fileRef.current?.click()}
+          >
+            Toque para enviar sua primeira figurinha.
+          </button>
+        ) : (
+          <div className="thin-scrollbar grid max-h-40 grid-cols-5 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-8">
+            {visibleStickers.map((sticker) => (
+              <button
+                key={sticker.id}
+                type="button"
+                aria-label={stickerMetaLabel(sticker)}
+                title={stickerMetaLabel(sticker)}
+                className="aspect-square min-h-0 rounded-xl bg-[#202c33] p-1.5 transition hover:bg-[#2a3942]"
+                onClick={() => onPick(sticker)}
+              >
+                <img
+                  src={resolveMediaUrl(sticker.imageUrl)}
+                  alt={sticker.name}
+                  className="h-full w-full rounded-lg object-contain"
+                />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -989,8 +1459,34 @@ function timeLabel(value: string) {
   }).format(new Date(value));
 }
 
+function stickerMetaLabel(
+  sticker: Pick<Sticker, "name" | "originalCreatorName" | "originalCreatedAt"> | {
+    originalCreatorName?: string | null | undefined;
+    originalCreatedAt?: string | null | undefined;
+  }
+) {
+  const creatorName = sticker.originalCreatorName?.trim();
+  const createdAt = sticker.originalCreatedAt ? stickerDateLabel(sticker.originalCreatedAt) : "";
+  const fallback = "name" in sticker ? sticker.name : "Figurinha";
+
+  if (creatorName && createdAt) return `Criada por ${creatorName} - ${createdAt}`;
+  if (creatorName) return `Criada por ${creatorName}`;
+  if (createdAt) return `Criada em ${createdAt}`;
+  return fallback;
+}
+
+function stickerDateLabel(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).format(new Date(value));
+}
+
 function replyPreview(message: ChatMessage) {
   if (message.type === "sticker") return "Figurinha";
   if (message.type === "audio") return "Audio";
+  if (message.type === "image") return "Imagem";
+  if (message.type === "poll") return message.poll?.question ?? "Enquete";
   return message.body || "Mensagem";
 }

@@ -43,7 +43,7 @@ export default {
         sm: "0.25rem"
       },
       boxShadow: {
-        glow: "0 0 32px rgba(20, 184, 166, 0.24)",
+        glow: "0 0 32px rgba(249, 168, 212, 0.24)",
         magenta: "0 0 34px rgba(236, 72, 153, 0.2)"
       },
       animation: {

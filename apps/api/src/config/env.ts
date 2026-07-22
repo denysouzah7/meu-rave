@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { networkInterfaces } from "node:os";
 import { z } from "zod";
 
 const envSchema = z.object({
@@ -19,6 +20,31 @@ const envSchema = z.object({
 
 export const env = envSchema.parse(process.env);
 
-export const clientOrigins = env.CLIENT_ORIGIN.split(",")
+const configuredClientOrigins = env.CLIENT_ORIGIN.split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
+
+function getLocalDevOrigins() {
+  if (env.NODE_ENV === "production") {
+    return [];
+  }
+
+  const origins = new Set<string>(["http://localhost:5173", "http://127.0.0.1:5173"]);
+  const ports = [5173, 5174];
+
+  for (const addresses of Object.values(networkInterfaces())) {
+    for (const address of addresses ?? []) {
+      if (address.family !== "IPv4" || address.internal) {
+        continue;
+      }
+
+      for (const port of ports) {
+        origins.add(`http://${address.address}:${port}`);
+      }
+    }
+  }
+
+  return [...origins];
+}
+
+export const clientOrigins = [...new Set([...configuredClientOrigins, ...getLocalDevOrigins()])];

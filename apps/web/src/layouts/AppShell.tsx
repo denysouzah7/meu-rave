@@ -37,8 +37,8 @@ export function AppShell() {
               <Disc3 className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-lg font-black">Meu Rave</p>
-              <p className="text-xs text-muted-foreground">Watch party comunitária</p>
+              <p className="text-lg font-black">Haru Space</p>
+              <p className="text-xs text-muted-foreground">Comunidade em tempo real</p>
             </div>
           </Link>
 
@@ -95,7 +95,7 @@ export function AppShell() {
           <header className="sticky top-0 z-30 flex items-center justify-between border-b border-white/10 bg-background/80 px-4 py-3 backdrop-blur-xl lg:hidden">
             <Link to="/" className="flex items-center gap-2 font-black">
               <Disc3 className="h-5 w-5 text-primary" />
-              Meu Rave
+              Haru Space
             </Link>
             <div className="flex items-center gap-2">
               {user?.role === "admin" && (

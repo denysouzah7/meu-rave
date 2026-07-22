@@ -10,9 +10,9 @@
     --card-foreground: 210 25% 96%;
     --popover: 222 22% 9%;
     --popover-foreground: 210 25% 96%;
-    --primary: 173 84% 43%;
-    --primary-foreground: 190 90% 8%;
-    --secondary: 326 76% 54%;
+    --primary: 327 83% 82%;
+    --primary-foreground: 336 45% 10%;
+    --secondary: 332 74% 68%;
     --secondary-foreground: 0 0% 100%;
     --muted: 220 16% 15%;
     --muted-foreground: 218 13% 68%;
@@ -22,7 +22,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 220 15% 18%;
     --input: 220 15% 18%;
-    --ring: 173 84% 43%;
+    --ring: 327 83% 82%;
   }
 
   * {
@@ -49,11 +49,61 @@
   }
 }
 
+@layer utilities {
+  .room-wallpaper {
+    background-color: #071014;
+    background-image:
+      radial-gradient(ellipse 7px 12px at 48px 28px, rgba(249, 168, 212, 0.13) 0 58%, transparent 62%),
+      radial-gradient(ellipse 7px 12px at 62px 41px, rgba(249, 168, 212, 0.11) 0 58%, transparent 62%),
+      radial-gradient(ellipse 7px 12px at 55px 58px, rgba(249, 168, 212, 0.1) 0 58%, transparent 62%),
+      radial-gradient(ellipse 7px 12px at 40px 58px, rgba(249, 168, 212, 0.1) 0 58%, transparent 62%),
+      radial-gradient(ellipse 7px 12px at 34px 41px, rgba(249, 168, 212, 0.11) 0 58%, transparent 62%),
+      radial-gradient(circle at 48px 45px, rgba(251, 207, 232, 0.14) 0 4px, transparent 5px),
+      radial-gradient(ellipse 5px 9px at 138px 112px, rgba(249, 168, 212, 0.08) 0 58%, transparent 62%),
+      radial-gradient(ellipse 5px 9px at 149px 122px, rgba(249, 168, 212, 0.075) 0 58%, transparent 62%),
+      radial-gradient(ellipse 5px 9px at 144px 136px, rgba(249, 168, 212, 0.07) 0 58%, transparent 62%),
+      radial-gradient(ellipse 5px 9px at 132px 136px, rgba(249, 168, 212, 0.07) 0 58%, transparent 62%),
+      radial-gradient(ellipse 5px 9px at 127px 122px, rgba(249, 168, 212, 0.075) 0 58%, transparent 62%),
+      radial-gradient(circle at 138px 125px, rgba(251, 207, 232, 0.1) 0 3px, transparent 4px),
+      linear-gradient(135deg, rgba(249, 168, 212, 0.045), transparent 34%),
+      linear-gradient(225deg, rgba(255, 255, 255, 0.03), transparent 42%);
+    background-size:
+      190px 190px,
+      190px 190px,
+      190px 190px,
+      190px 190px,
+      190px 190px,
+      190px 190px,
+      190px 190px,
+      190px 190px,
+      190px 190px,
+      190px 190px,
+      190px 190px,
+      190px 190px,
+      100% 100%,
+      100% 100%;
+  }
+
+  .room-panel-texture {
+    background-color: #0b141a;
+    background-image:
+      linear-gradient(135deg, rgba(249, 168, 212, 0.045), transparent 38%),
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 28px);
+  }
+
+  .room-stage-texture {
+    background-color: #0b1016;
+    background-image:
+      linear-gradient(135deg, rgba(249, 168, 212, 0.07), transparent 40%),
+      linear-gradient(0deg, rgba(255, 255, 255, 0.035), transparent 45%);
+  }
+}
+
 @layer components {
   .app-surface {
     background:
-      radial-gradient(circle at 12% 12%, rgba(20, 184, 166, 0.16), transparent 28%),
-      radial-gradient(circle at 86% 18%, rgba(236, 72, 153, 0.12), transparent 26%),
+      radial-gradient(circle at 12% 12%, rgba(249, 168, 212, 0.15), transparent 28%),
+      radial-gradient(circle at 86% 18%, rgba(244, 114, 182, 0.1), transparent 26%),
       linear-gradient(135deg, #05070d 0%, #101219 44%, #07090f 100%);
   }
 
@@ -68,7 +118,7 @@
 
   .thin-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: rgba(20, 184, 166, 0.5) rgba(255, 255, 255, 0.06);
+    scrollbar-color: rgba(249, 168, 212, 0.55) rgba(255, 255, 255, 0.06);
   }
 
   .thin-scrollbar::-webkit-scrollbar {
@@ -81,7 +131,7 @@
   }
 
   .thin-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(20, 184, 166, 0.5);
+    background: rgba(249, 168, 212, 0.55);
     border-radius: 8px;
   }
 
@@ -94,7 +144,7 @@
       height: calc(var(--room-visual-height, 100dvh) - 3.5rem);
       max-height: calc(var(--room-visual-height, 100dvh) - 3.5rem);
       min-height: 0;
-      background: #071014;
+      background: transparent;
     }
 
     .room-mobile-stage {

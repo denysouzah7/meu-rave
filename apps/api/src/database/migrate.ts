@@ -78,7 +78,10 @@ export function migrate() {
       "id" TEXT PRIMARY KEY NOT NULL,
       "slug" TEXT NOT NULL UNIQUE,
       "name" TEXT NOT NULL,
+      "type" TEXT NOT NULL DEFAULT 'rave',
       "bannerUrl" TEXT,
+      "coverUrl" TEXT,
+      "backgroundUrl" TEXT,
       "description" TEXT NOT NULL,
       "category" TEXT NOT NULL,
       "creatorId" TEXT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
@@ -175,6 +178,9 @@ export function migrate() {
       "id" TEXT PRIMARY KEY NOT NULL,
       "packId" TEXT NOT NULL REFERENCES "sticker_packs"("id") ON DELETE CASCADE,
       "uploadId" TEXT NOT NULL REFERENCES "uploads"("id") ON DELETE CASCADE,
+      "originalCreatorId" TEXT REFERENCES "user"("id") ON DELETE SET NULL,
+      "originalCreatedAt" INTEGER,
+      "sourceStickerId" TEXT,
       "name" TEXT NOT NULL,
       "imageUrl" TEXT NOT NULL,
       "createdAt" INTEGER NOT NULL
@@ -190,6 +196,38 @@ export function migrate() {
     );
     CREATE INDEX IF NOT EXISTS "audios_user_idx" ON "audios" ("userId");
 
+    CREATE TABLE IF NOT EXISTS "polls" (
+      "id" TEXT PRIMARY KEY NOT NULL,
+      "roomId" TEXT NOT NULL REFERENCES "rooms"("id") ON DELETE CASCADE,
+      "creatorId" TEXT REFERENCES "user"("id") ON DELETE SET NULL,
+      "question" TEXT NOT NULL,
+      "allowsMultiple" INTEGER NOT NULL DEFAULT 0,
+      "closesAt" INTEGER,
+      "createdAt" INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS "polls_room_idx" ON "polls" ("roomId");
+    CREATE INDEX IF NOT EXISTS "polls_creator_idx" ON "polls" ("creatorId");
+    CREATE INDEX IF NOT EXISTS "polls_created_idx" ON "polls" ("createdAt");
+
+    CREATE TABLE IF NOT EXISTS "poll_options" (
+      "id" TEXT PRIMARY KEY NOT NULL,
+      "pollId" TEXT NOT NULL REFERENCES "polls"("id") ON DELETE CASCADE,
+      "body" TEXT NOT NULL,
+      "sortOrder" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS "poll_options_poll_idx" ON "poll_options" ("pollId");
+
+    CREATE TABLE IF NOT EXISTS "poll_votes" (
+      "pollId" TEXT NOT NULL REFERENCES "polls"("id") ON DELETE CASCADE,
+      "optionId" TEXT NOT NULL REFERENCES "poll_options"("id") ON DELETE CASCADE,
+      "userId" TEXT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+      "createdAt" INTEGER NOT NULL,
+      PRIMARY KEY ("pollId", "userId", "optionId")
+    );
+    CREATE INDEX IF NOT EXISTS "poll_votes_option_idx" ON "poll_votes" ("optionId");
+    CREATE INDEX IF NOT EXISTS "poll_votes_user_idx" ON "poll_votes" ("userId");
+
     CREATE TABLE IF NOT EXISTS "messages" (
       "id" TEXT PRIMARY KEY NOT NULL,
       "roomId" TEXT NOT NULL REFERENCES "rooms"("id") ON DELETE CASCADE,
@@ -199,12 +237,15 @@ export function migrate() {
       "replyToMessageId" TEXT,
       "stickerId" TEXT REFERENCES "stickers"("id") ON DELETE SET NULL,
       "audioId" TEXT REFERENCES "audios"("id") ON DELETE SET NULL,
+      "imageUploadId" TEXT REFERENCES "uploads"("id") ON DELETE SET NULL,
+      "pollId" TEXT REFERENCES "polls"("id") ON DELETE SET NULL,
       "isPinned" INTEGER NOT NULL DEFAULT 0,
       "deletedAt" INTEGER,
       "createdAt" INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS "messages_room_created_idx" ON "messages" ("roomId", "createdAt");
     CREATE INDEX IF NOT EXISTS "messages_pinned_idx" ON "messages" ("roomId", "isPinned");
+    CREATE INDEX IF NOT EXISTS "messages_room_user_idx" ON "messages" ("roomId", "userId");
     CREATE INDEX IF NOT EXISTS "messages_user_idx" ON "messages" ("userId");
 
     CREATE TABLE IF NOT EXISTS "message_likes" (
@@ -224,6 +265,65 @@ export function migrate() {
       "createdAt" INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS "notifications_user_read_idx" ON "notifications" ("userId", "readAt");
+  `);
+
+  const roomColumns = sqlite.prepare("PRAGMA table_info(rooms)").all() as Array<{ name: string }>;
+  if (!roomColumns.some((column) => column.name === "type")) {
+    sqlite.exec(`
+      ALTER TABLE "rooms" ADD COLUMN "type" TEXT NOT NULL DEFAULT 'rave';
+    `);
+  }
+  if (!roomColumns.some((column) => column.name === "backgroundUrl")) {
+    sqlite.exec(`
+      ALTER TABLE "rooms" ADD COLUMN "backgroundUrl" TEXT;
+    `);
+  }
+  if (!roomColumns.some((column) => column.name === "coverUrl")) {
+    sqlite.exec(`
+      ALTER TABLE "rooms" ADD COLUMN "coverUrl" TEXT;
+    `);
+  }
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS "rooms_type_idx" ON "rooms" ("type");`);
+
+  const stickerColumns = sqlite.prepare("PRAGMA table_info(stickers)").all() as Array<{ name: string }>;
+  if (!stickerColumns.some((column) => column.name === "originalCreatorId")) {
+    sqlite.exec(`ALTER TABLE "stickers" ADD COLUMN "originalCreatorId" TEXT REFERENCES "user"("id") ON DELETE SET NULL;`);
+  }
+  if (!stickerColumns.some((column) => column.name === "originalCreatedAt")) {
+    sqlite.exec(`ALTER TABLE "stickers" ADD COLUMN "originalCreatedAt" INTEGER;`);
+  }
+  if (!stickerColumns.some((column) => column.name === "sourceStickerId")) {
+    sqlite.exec(`ALTER TABLE "stickers" ADD COLUMN "sourceStickerId" TEXT;`);
+  }
+  sqlite.exec(`
+    UPDATE "stickers"
+    SET "originalCreatorId" = (
+      SELECT "userId" FROM "sticker_packs" WHERE "sticker_packs"."id" = "stickers"."packId"
+    )
+    WHERE "originalCreatorId" IS NULL;
+
+    UPDATE "stickers"
+    SET "originalCreatedAt" = "createdAt"
+    WHERE "originalCreatedAt" IS NULL;
+
+    CREATE INDEX IF NOT EXISTS "stickers_original_creator_idx" ON "stickers" ("originalCreatorId");
+    CREATE INDEX IF NOT EXISTS "stickers_source_idx" ON "stickers" ("sourceStickerId");
+  `);
+
+  const messageColumns = sqlite.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
+  if (!messageColumns.some((column) => column.name === "imageUploadId")) {
+    sqlite.exec(`
+      ALTER TABLE "messages" ADD COLUMN "imageUploadId" TEXT REFERENCES "uploads"("id") ON DELETE SET NULL;
+    `);
+  }
+  if (!messageColumns.some((column) => column.name === "pollId")) {
+    sqlite.exec(`
+      ALTER TABLE "messages" ADD COLUMN "pollId" TEXT REFERENCES "polls"("id") ON DELETE SET NULL;
+    `);
+  }
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS "messages_image_upload_idx" ON "messages" ("imageUploadId");
+    CREATE INDEX IF NOT EXISTS "messages_poll_idx" ON "messages" ("pollId");
   `);
 
   const existing = sqlite.prepare("SELECT value FROM settings WHERE key = ?").get("messageRetentionDays");

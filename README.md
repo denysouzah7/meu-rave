@@ -1,4 +1,4 @@
-# Meu Rave
+# Haru Space
 
 Plataforma web moderna para comunidades de raves com salas privadas, watch party sincronizada, chat em tempo real, figurinhas, audios, painel administrativo, permissoes por sala e uploads.
 

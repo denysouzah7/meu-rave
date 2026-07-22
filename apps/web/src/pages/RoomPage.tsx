@@ -1,8 +1,16 @@
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
-import { AlertTriangle, ChevronLeft, Copy, Link2, MessageCircle, MessageCircleOff, X } from "lucide-react";
-import type { ChatMessage, Participant, PlaybackState, Room, RoomContent, RoomPayload } from "@/services/types";
+import { AlertTriangle, ChevronLeft, Clock3, Copy, Link2, MessageCircle, MessageCircleOff, Trophy, X } from "lucide-react";
+import type {
+  ChatMessage,
+  Participant,
+  PlaybackState,
+  Room,
+  RoomContent,
+  RoomMessageRankingItem,
+  RoomPayload
+} from "@/services/types";
 import { API_URL, resolveMediaUrl } from "@/services/api";
 import { useMe, useRoom } from "@/hooks/useApi";
 import { WatchPlayer } from "@/components/room/WatchPlayer";
@@ -12,6 +20,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { createMediaBackgroundStyle } from "@/lib/media";
 import { cn } from "@/lib/utils";
 
 export function RoomPage() {
@@ -24,8 +33,12 @@ export function RoomPage() {
   const [playback, setPlayback] = React.useState<PlaybackState | null>(null);
   const [participants, setParticipants] = React.useState<Participant[]>([]);
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
-  const [toast, setToast] = React.useState("");
+  const [messageCount, setMessageCount] = React.useState(0);
+  const [messageRanking, setMessageRanking] = React.useState<RoomMessageRankingItem[]>([]);
+  const [messageRetentionDays, setMessageRetentionDays] = React.useState<number | null>(null);
+  const [toast, setToast] = React.useState<{ message: string; tone: "error" | "info" } | null>(null);
   const [roomInfoOpen, setRoomInfoOpen] = React.useState(false);
+  const [retentionInfoOpen, setRetentionInfoOpen] = React.useState(false);
   const [messagesHidden, setMessagesHidden] = React.useState(false);
   const roomViewportRef = React.useRef<HTMLElement | null>(null);
   const socketRef = React.useRef<Socket | null>(null);
@@ -37,6 +50,15 @@ export function RoomPage() {
     setPlayback(payload.playback);
     setParticipants(payload.participants);
     setMessages(payload.messages);
+    setMessageCount(payload.messageCount ?? payload.messages.length);
+    setMessageRanking(payload.messageRanking ?? []);
+    setMessageRetentionDays(payload.messageRetentionDays ?? null);
+    setRetentionInfoOpen(false);
+  }, []);
+
+  const showToast = React.useCallback((message: string, tone: "error" | "info" = "info") => {
+    setToast({ message, tone });
+    window.setTimeout(() => setToast(null), 2500);
   }, []);
 
   React.useEffect(() => {
@@ -80,12 +102,16 @@ export function RoomPage() {
     socket.on("room:state", (payload: RoomPayload) => applyPayload(payload));
     socket.on("participants:update", (payload: { participants: Participant[] }) => setParticipants(payload.participants));
     socket.on("player:update", (payload: { playback: PlaybackState }) => setPlayback(payload.playback));
-    socket.on("chat:message", (payload: { message: ChatMessage }) =>
-      setMessages((value) => [...value.filter((message) => message.id !== payload.message.id), payload.message])
-    );
-    socket.on("chat:delete", (payload: { messageId: string }) =>
-      setMessages((value) => value.filter((message) => message.id !== payload.messageId))
-    );
+    socket.on("chat:message", (payload: { message: ChatMessage; messageCount?: number; messageRanking?: RoomMessageRankingItem[] }) => {
+      setMessages((value) => [...value.filter((message) => message.id !== payload.message.id), payload.message]);
+      setMessageCount((value) => payload.messageCount ?? value + 1);
+      setMessageRanking((value) => payload.messageRanking ?? value);
+    });
+    socket.on("chat:delete", (payload: { messageId: string; messageCount?: number; messageRanking?: RoomMessageRankingItem[] }) => {
+      setMessages((value) => value.filter((message) => message.id !== payload.messageId));
+      setMessageCount((value) => payload.messageCount ?? Math.max(0, value - 1));
+      setMessageRanking((value) => payload.messageRanking ?? value);
+    });
     socket.on("chat:likes", (payload: { messageId: string; likes: number }) =>
       setMessages((value) =>
         value.map((message) => (message.id === payload.messageId ? { ...message, likes: payload.likes } : message))
@@ -98,9 +124,17 @@ export function RoomPage() {
         )
       )
     );
+    socket.on("poll:update", (payload: { poll: NonNullable<ChatMessage["poll"]> }) =>
+      setMessages((value) =>
+        value.map((message) =>
+          message.pollId === payload.poll.id || message.poll?.id === payload.poll.id
+            ? { ...message, poll: payload.poll }
+            : message
+        )
+      )
+    );
     socket.on("error:toast", (payload: { message: string }) => {
-      setToast(payload.message);
-      setTimeout(() => setToast(""), 2500);
+      showToast(payload.message, "error");
     });
 
     return () => {
@@ -108,7 +142,7 @@ export function RoomPage() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [slug, applyPayload]);
+  }, [slug, applyPayload, showToast]);
 
   const emitPlayback = React.useCallback((patch: { contentId?: string | null; isPlaying: boolean; positionSeconds: number }) => {
     socketRef.current?.emit("player:update", patch);
@@ -131,14 +165,29 @@ export function RoomPage() {
   const activeContent =
     contents.find((content) => content.id === playback?.contentId) ?? contents.find((content) => content.isActive) ?? null;
   const onlineCount = participants.filter((item) => item.online).length;
+  const isGroup = room.type === "group";
+  const messagesAreHidden = !isGroup && messagesHidden;
+  const hasMessageRetention = typeof messageRetentionDays === "number" && messageRetentionDays > 0;
+  const messageRetentionNotice = hasMessageRetention ? formatMessageRetentionNotice(messageRetentionDays) : "";
+  const roomBackgroundStyle = createMediaBackgroundStyle(room.backgroundUrl, 0.82);
   const socket = () => socketRef.current;
   const copyLink = () => void navigator.clipboard.writeText(window.location.href);
 
   return (
-    <div className="room-page space-y-4 max-sm:flex max-sm:h-full max-sm:min-h-0 max-sm:flex-col max-sm:overflow-hidden max-sm:bg-[#071014] max-sm:space-y-0">
+    <div
+      className="room-page room-wallpaper space-y-4 max-sm:flex max-sm:h-full max-sm:min-h-0 max-sm:flex-col max-sm:overflow-hidden max-sm:space-y-0"
+      style={roomBackgroundStyle}
+    >
       {toast && (
-        <div className="fixed right-4 top-4 z-50 rounded-lg border border-red-400/[0.20] bg-red-500/[0.15] px-4 py-3 text-sm text-red-100 shadow-2xl">
-          {toast}
+        <div
+          className={cn(
+            "fixed right-4 top-4 z-50 rounded-lg border px-4 py-3 text-sm shadow-2xl",
+            toast.tone === "error"
+              ? "border-red-400/[0.20] bg-red-500/[0.15] text-red-100"
+              : "border-primary/[0.25] bg-primary/[0.14] text-white"
+          )}
+        >
+          {toast.message}
         </div>
       )}
 
@@ -151,72 +200,121 @@ export function RoomPage() {
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-1 text-left active:bg-white/[0.06]"
-          onClick={() => setRoomInfoOpen(true)}
+          onClick={() => {
+            setRetentionInfoOpen(false);
+            setRoomInfoOpen(true);
+          }}
         >
           <Avatar
             name={room.name}
             src={resolveMediaUrl(room.bannerUrl)}
-            className="h-10 w-10 rounded-full border border-primary/30 bg-primary/[0.16]"
+            className={cn(
+              "h-10 w-10 border border-primary/30 bg-primary/[0.16]",
+              isGroup ? "rounded-full" : "rounded-none"
+            )}
           />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-bold text-white">{room.name}</span>
             <span className="block truncate text-xs text-[#aebac1]">
-              {onlineCount} online - toque para info
+              {isGroup ? "Grupo" : "Rave"} - {onlineCount} online - toque para info
             </span>
           </span>
         </button>
-        <Button
-          size="icon"
-          variant={messagesHidden ? "secondary" : "ghost"}
-          aria-label={messagesHidden ? "Mostrar mensagens" : "Ocultar mensagens"}
-          title={messagesHidden ? "Mostrar mensagens" : "Ocultar mensagens"}
-          aria-pressed={messagesHidden}
-          onClick={() => setMessagesHidden((value) => !value)}
-        >
-          {messagesHidden ? <MessageCircle className="h-5 w-5" /> : <MessageCircleOff className="h-5 w-5" />}
-        </Button>
-        <Button size="icon" variant="ghost" aria-label="Copiar link" onClick={copyLink}>
-          <Link2 className="h-5 w-5" />
-        </Button>
+        {!isGroup && (
+          <Button
+            size="icon"
+            variant={messagesHidden ? "secondary" : "ghost"}
+            aria-label={messagesHidden ? "Mostrar mensagens" : "Ocultar mensagens"}
+            title={messagesHidden ? "Mostrar mensagens" : "Ocultar mensagens"}
+            aria-pressed={messagesHidden}
+            onClick={() => {
+              setRetentionInfoOpen(false);
+              setMessagesHidden((value) => !value);
+            }}
+          >
+            {messagesHidden ? <MessageCircle className="h-5 w-5" /> : <MessageCircleOff className="h-5 w-5" />}
+          </Button>
+        )}
+        {hasMessageRetention && (
+          <Button
+            size="icon"
+            variant={retentionInfoOpen ? "secondary" : "ghost"}
+            aria-label={messageRetentionNotice}
+            aria-expanded={retentionInfoOpen}
+            title={messageRetentionNotice}
+            onClick={() => setRetentionInfoOpen((value) => !value)}
+          >
+            <Clock3 className="h-5 w-5" />
+          </Button>
+        )}
       </div>
+
+      {retentionInfoOpen && hasMessageRetention && (
+        <div className="mx-auto flex w-full max-w-5xl shrink-0 items-start gap-2.5 rounded-lg border border-white/10 bg-[#182229] px-3 py-2.5 text-left shadow-xl max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:shadow-none">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/[0.16] text-primary">
+            <Clock3 className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-white">Limpeza automatica</span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-[#aebac1]">{messageRetentionNotice}</span>
+          </span>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            aria-label="Fechar aviso"
+            onClick={() => setRetentionInfoOpen(false)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       <section
         ref={roomViewportRef}
         className={cn(
           "room-mobile-stack mx-auto max-w-5xl space-y-3 max-sm:flex max-sm:w-full max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col max-sm:overflow-hidden max-sm:space-y-0 max-sm:pt-2",
-          messagesHidden && "room-mobile-stack--video-only"
+          messagesAreHidden && "room-mobile-stack--video-only",
+          isGroup && "room-mobile-stack--group max-sm:pt-0"
         )}
       >
-        <div
-          className={cn(
-            "room-mobile-stage sticky top-16 z-20 rounded-lg border border-primary/[0.16] bg-background/95 p-2 shadow-2xl backdrop-blur-xl max-sm:static max-sm:shrink-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:bg-[#071014] max-sm:p-1.5 max-sm:shadow-none lg:top-4",
-            messagesHidden && "max-sm:min-h-0 max-sm:flex-1"
-          )}
-        >
-          <WatchPlayer
-            content={activeContent}
-            playback={playback}
-            canModerate={false}
-            onPlayback={emitPlayback}
+        {!isGroup && (
+          <div
             className={cn(
-              "h-[clamp(220px,42svh,520px)] max-sm:h-[clamp(180px,34svh,300px)]",
-              messagesHidden && "max-sm:h-full"
+              "room-mobile-stage room-stage-texture sticky top-16 z-20 rounded-lg border border-primary/[0.16] p-2 shadow-2xl backdrop-blur-xl max-sm:static max-sm:shrink-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:p-1.5 max-sm:shadow-none lg:top-4",
+              messagesAreHidden && "max-sm:min-h-0 max-sm:flex-1"
             )}
-            mediaClassName="h-full aspect-auto"
-          />
-        </div>
+          >
+            <WatchPlayer
+              content={activeContent}
+              playback={playback}
+              canModerate={false}
+              onPlayback={emitPlayback}
+              className={cn(
+                "h-[clamp(220px,42svh,520px)] max-sm:h-[clamp(180px,34svh,300px)]",
+                messagesAreHidden && "max-sm:h-full"
+              )}
+              mediaClassName="h-full aspect-auto"
+            />
+          </div>
+        )}
 
-        {!messagesHidden && (
+        {!messagesAreHidden && (
           <ChatPanel
             roomName={room.name}
             onlineCount={onlineCount}
+            backgroundUrl={room.backgroundUrl}
             messages={messages}
             currentUserId={me?.user.id ?? ""}
             participant={participant}
             canModerate={false}
-            className="room-mobile-chat h-[min(520px,52svh)] min-h-[320px] max-sm:h-auto max-sm:min-h-0 max-sm:flex-1"
+            className={cn(
+              "room-mobile-chat h-[min(520px,52svh)] min-h-[320px] max-sm:h-auto max-sm:min-h-0 max-sm:flex-1",
+              isGroup && "h-[min(760px,calc(100vh-132px))] min-h-[620px]"
+            )}
             onOpenRoomInfo={() => setRoomInfoOpen(true)}
             onSend={(payload) => socket()?.emit("chat:message", payload)}
+            onPollVote={(pollId, optionId) => socket()?.emit("poll:vote", { pollId, optionId })}
             onLike={(messageId) => socket()?.emit("chat:like", { messageId })}
             onDelete={(messageId) => socket()?.emit("chat:delete", { messageId })}
             onPin={(messageId, isPinned) => socket()?.emit("chat:pin", { messageId, isPinned })}
@@ -229,7 +327,8 @@ export function RoomPage() {
           room={room}
           participant={participant}
           participants={participants}
-          messagesCount={messages.length}
+          messagesCount={messageCount}
+          messageRanking={messageRanking}
           canModerate={false}
           onClose={() => setRoomInfoOpen(false)}
           onCopyLink={copyLink}
@@ -240,11 +339,16 @@ export function RoomPage() {
   );
 }
 
+function formatMessageRetentionNotice(days: number) {
+  return `Mensagens com mais de ${days} ${days === 1 ? "dia" : "dias"} sao apagadas automaticamente.`;
+}
+
 function RoomInfoPanel({
   room,
   participant,
   participants,
   messagesCount,
+  messageRanking,
   canModerate,
   onClose,
   onCopyLink,
@@ -254,12 +358,22 @@ function RoomInfoPanel({
   participant: Participant | null;
   participants: Participant[];
   messagesCount: number;
+  messageRanking: RoomMessageRankingItem[];
   canModerate: boolean;
   onClose: () => void;
   onCopyLink: () => void;
   onPatchParticipant: (participantId: string, patch: Partial<Participant>) => void;
 }) {
   const onlineCount = participants.filter((item) => item.online).length;
+  const isGroup = room.type === "group";
+  const roleLabel =
+    participant?.role === "administrator"
+      ? "Administrador"
+      : participant?.role === "moderator"
+        ? "Moderador"
+        : participant?.role === "viewer"
+          ? "Visualizador"
+          : "Participante";
 
   return (
     <div
@@ -273,7 +387,7 @@ function RoomInfoPanel({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-[#111b21] px-4">
-          <p className="text-sm font-bold text-white">Info da sala</p>
+          <p className="text-sm font-bold text-white">{isGroup ? "Info do grupo" : "Info da rave"}</p>
           <Button size="icon" variant="ghost" aria-label="Fechar" onClick={onClose}>
             <X className="h-5 w-5" />
           </Button>
@@ -281,39 +395,111 @@ function RoomInfoPanel({
 
         <div className="thin-scrollbar flex-1 overflow-y-auto p-4">
           <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.04]">
-            <div className="relative h-36 bg-white/[0.05]">
-              {room.bannerUrl ? (
+            <div
+              className={cn(
+                "relative bg-white/[0.05]",
+                isGroup
+                  ? "flex h-36 items-center justify-center bg-[radial-gradient(circle_at_center,rgba(236,72,153,.18),rgba(255,255,255,.04)_55%,transparent_74%)]"
+                  : "h-40"
+              )}
+            >
+              {isGroup ? (
+                <>
+                  {room.coverUrl ? (
+                    <img
+                      src={resolveMediaUrl(room.coverUrl)}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover opacity-85"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 room-wallpaper bg-[linear-gradient(135deg,rgba(236,72,153,.20),rgba(20,184,166,.12),rgba(255,255,255,.04))]" />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-black/25" />
+                  {room.bannerUrl ? (
+                    <img
+                      src={resolveMediaUrl(room.bannerUrl)}
+                      alt={room.name}
+                      className="relative z-10 h-24 w-24 rounded-full border-2 border-primary/35 object-cover shadow-xl"
+                    />
+                  ) : (
+                    <div className="relative z-10 flex h-24 w-24 items-center justify-center rounded-full border-2 border-primary/35 bg-[linear-gradient(135deg,rgba(20,184,166,.20),rgba(236,72,153,.12),rgba(245,158,11,.12))]">
+                      <MessageCircle className="h-10 w-10 text-white/70" />
+                    </div>
+                  )}
+                </>
+              ) : room.bannerUrl ? (
                 <img src={resolveMediaUrl(room.bannerUrl)} alt={room.name} className="h-full w-full object-cover" />
               ) : (
-                <div className="h-full w-full bg-[linear-gradient(135deg,rgba(20,184,166,.24),rgba(236,72,153,.14),rgba(245,158,11,.16))]" />
+                <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,rgba(20,184,166,.20),rgba(236,72,153,.12),rgba(245,158,11,.12))]">
+                  <MessageCircle className="h-10 w-10 text-white/70" />
+                </div>
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0b141a] to-transparent" />
             </div>
-            <div className="p-4">
-              <div className="-mt-12 mb-3 flex justify-center">
-                <Avatar name={room.name} className="h-20 w-20 rounded-full border-4 border-[#0b141a] bg-primary/[0.16] text-xl" />
+            <div className="space-y-4 p-4">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#aebac1]">
+                  {isGroup ? "Grupo" : "Rave"}
+                </p>
+                <h2 className="mt-1 break-words text-2xl font-black leading-tight text-white">{room.name}</h2>
               </div>
-              <h2 className="text-center text-xl font-black text-white">{room.name}</h2>
-              <div className="mt-3 flex flex-wrap justify-center gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Badge>{room.category}</Badge>
                 <Badge variant={room.isActive ? "default" : "destructive"}>
                   {room.isActive ? "Ativa" : "Encerrada"}
                 </Badge>
-                {canModerate && <Badge variant="secondary">Moderacao</Badge>}
+                <Badge variant={canModerate ? "secondary" : "muted"}>{roleLabel}</Badge>
               </div>
-              <p className="mt-4 text-sm leading-relaxed text-[#d1d7db]">{room.description}</p>
+              <p className="text-sm leading-relaxed text-[#d1d7db]">{room.description}</p>
             </div>
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2">
             <InfoTile label="Online" value={onlineCount} />
             <InfoTile label="Mensagens" value={messagesCount} />
-            <InfoTile label="Permissao" value={canModerate ? "Admin" : participant?.role ?? "Participante"} />
-            <InfoTile label="Criador" value={room.creatorName ?? "Criador"} />
           </div>
 
           <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] p-3">
-            <p className="text-xs font-semibold uppercase text-[#aebac1]">Link</p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <Trophy className="h-4 w-4 shrink-0 text-[#fbbf24]" />
+                <p className="truncate text-xs font-semibold uppercase text-[#aebac1]">Ranking de mensagens</p>
+              </div>
+              <Badge variant="muted">
+                {messageRanking.length} {messageRanking.length === 1 ? "usuario" : "usuarios"}
+              </Badge>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {messageRanking.length > 0 ? (
+                messageRanking.map((item, index) => (
+                  <div key={item.userId} className="flex min-w-0 items-center gap-3 rounded-lg bg-black/15 px-2.5 py-2">
+                    <span
+                      className={cn(
+                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black",
+                        index === 0 ? "bg-[#fbbf24] text-[#1f1300]" : "bg-white/10 text-[#e9edef]"
+                      )}
+                    >
+                      {index + 1}
+                    </span>
+                    <Avatar src={item.image} name={item.name} className="h-9 w-9 rounded-full" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-white">{item.name ?? "Usuario"}</p>
+                      <p className="text-xs text-[#aebac1]">
+                        {item.messageCount} {item.messageCount === 1 ? "mensagem" : "mensagens"}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-lg bg-black/15 px-3 py-3 text-sm text-[#aebac1]">
+                  Ainda nao ha mensagens suficientes para montar o ranking.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] p-3">
+            <p className="text-xs font-semibold uppercase text-[#aebac1]">Convite</p>
             <div className="mt-2 flex items-center gap-2">
               <p className="min-w-0 flex-1 truncate rounded-lg bg-black/20 px-3 py-2 text-sm text-[#e9edef]">
                 /sala/{room.slug}
@@ -326,16 +512,6 @@ function RoomInfoPanel({
                   <Link2 className="h-4 w-4" />
                 </Link>
               </Button>
-            </div>
-          </div>
-
-          <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] p-3">
-            <div className="flex items-center gap-3">
-              <Avatar src={resolveMediaUrl(room.creatorImage)} name={room.creatorName} />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-white">{room.creatorName ?? "Criador"}</p>
-                <p className="text-xs text-[#aebac1]">Criador da sala</p>
-              </div>
             </div>
           </div>
 

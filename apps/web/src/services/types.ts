@@ -15,7 +15,10 @@ export type Room = {
   id: string;
   slug: string;
   name: string;
+  type: "rave" | "group";
   bannerUrl?: string | null;
+  coverUrl?: string | null;
+  backgroundUrl?: string | null;
   description: string;
   category: string;
   creatorId: string;
@@ -75,11 +78,13 @@ export type ChatMessage = {
   id: string;
   roomId: string;
   userId?: string | null;
-  type: "text" | "sticker" | "audio" | "system";
+  type: "text" | "sticker" | "audio" | "image" | "poll" | "system";
   body?: string | null;
   replyToMessageId?: string | null;
   stickerId?: string | null;
   audioId?: string | null;
+  imageUploadId?: string | null;
+  pollId?: string | null;
   isPinned: boolean;
   deletedAt?: string | null;
   createdAt: string;
@@ -88,15 +93,48 @@ export type ChatMessage = {
   authorRole?: "admin" | "participant" | null;
   stickerName?: string | null;
   stickerUrl?: string | null;
+  stickerOriginalCreatorId?: string | null;
+  stickerOriginalCreatorName?: string | null;
+  stickerOriginalCreatedAt?: string | null;
   audioUrl?: string | null;
   audioDuration?: number | null;
+  imageUrl?: string | null;
+  imageName?: string | null;
+  imageMimeType?: string | null;
+  poll?: Poll | null;
   likes?: number;
+};
+
+export type PollOption = {
+  id: string;
+  pollId: string;
+  body: string;
+  sortOrder: number;
+  createdAt: string;
+  votes: number;
+  votedByMe: boolean;
+};
+
+export type Poll = {
+  id: string;
+  roomId: string;
+  creatorId?: string | null;
+  question: string;
+  allowsMultiple: boolean;
+  closesAt?: string | null;
+  createdAt: string;
+  totalVotes: number;
+  options: PollOption[];
 };
 
 export type Sticker = {
   id: string;
   packId: string;
   uploadId: string;
+  originalCreatorId?: string | null;
+  originalCreatorName?: string | null;
+  originalCreatedAt?: string | null;
+  sourceStickerId?: string | null;
   name: string;
   imageUrl: string;
   createdAt: string;
@@ -111,6 +149,13 @@ export type StickerPack = {
   stickers: Sticker[];
 };
 
+export type RoomMessageRankingItem = {
+  userId: string;
+  name?: string | null;
+  image?: string | null;
+  messageCount: number;
+};
+
 export type RoomPayload = {
   room: Room;
   participant: Participant;
@@ -119,4 +164,7 @@ export type RoomPayload = {
   participants: Participant[];
   messages: ChatMessage[];
   pinnedMessages: ChatMessage[];
+  messageCount: number;
+  messageRanking: RoomMessageRankingItem[];
+  messageRetentionDays?: number | null;
 };

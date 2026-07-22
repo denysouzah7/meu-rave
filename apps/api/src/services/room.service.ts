@@ -14,7 +14,7 @@ import {
   type Upload,
   type RoomParticipant
 } from "../database/schema.js";
-import { createId, createRoomSlug } from "../utils/id.js";
+import { createId, createRoomSlug, normalizeRoomSlug } from "../utils/id.js";
 import { now } from "../utils/dates.js";
 import { badRequest, forbidden, notFound } from "../utils/http.js";
 import { assertRoomModerator } from "./permission.service.js";
@@ -22,21 +22,56 @@ import { deleteUploadFiles } from "./upload.service.js";
 
 export type RoomInput = {
   name: string;
+  slug?: string | undefined;
+  type?: "rave" | "group" | undefined;
   description: string;
   category: string;
   bannerUrl?: string | null | undefined;
+  coverUrl?: string | null | undefined;
+  backgroundUrl?: string | null | undefined;
   isActive?: boolean | undefined;
 };
 
 export type RoomPatch = {
   name?: string | undefined;
+  slug?: string | undefined;
+  type?: "rave" | "group" | undefined;
   description?: string | undefined;
   category?: string | undefined;
   bannerUrl?: string | null | undefined;
+  coverUrl?: string | null | undefined;
+  backgroundUrl?: string | null | undefined;
   isActive?: boolean | undefined;
 };
 
 type UploadCleanupCandidate = Pick<Upload, "id" | "type" | "filename" | "url">;
+
+function ensureValidSlug(value: string) {
+  const slug = normalizeRoomSlug(value);
+  if (slug.length < 3) {
+    throw badRequest("O link personalizado precisa ter pelo menos 3 caracteres");
+  }
+  return slug;
+}
+
+function createAvailableRoomSlug(base: string) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
+    const existing = db.select({ id: rooms.id }).from(rooms).where(eq(rooms.slug, candidate)).get();
+    if (!existing) {
+      return candidate;
+    }
+  }
+
+  throw badRequest("Nao foi possivel gerar link exclusivo da sala");
+}
+
+function assertSlugAvailable(slug: string, roomId?: string) {
+  const existing = db.select({ id: rooms.id }).from(rooms).where(eq(rooms.slug, slug)).get();
+  if (existing && existing.id !== roomId) {
+    throw badRequest("Esse link personalizado ja esta em uso");
+  }
+}
 
 export function listRooms(includeInactive = false) {
   const where = includeInactive ? undefined : eq(rooms.isActive, true);
@@ -45,7 +80,10 @@ export function listRooms(includeInactive = false) {
       id: rooms.id,
       slug: rooms.slug,
       name: rooms.name,
+      type: rooms.type,
       bannerUrl: rooms.bannerUrl,
+      coverUrl: rooms.coverUrl,
+      backgroundUrl: rooms.backgroundUrl,
       description: rooms.description,
       category: rooms.category,
       creatorId: rooms.creatorId,
@@ -65,14 +103,17 @@ export function listRooms(includeInactive = false) {
 
 export function createRoom(input: RoomInput, creatorId: string) {
   const timestamp = now();
-  let slug = createRoomSlug();
-  let attempts = 0;
-  while (db.select({ id: rooms.id }).from(rooms).where(eq(rooms.slug, slug)).get()) {
-    slug = createRoomSlug();
-    attempts += 1;
-    if (attempts > 5) {
-      throw badRequest("Nao foi possivel gerar link exclusivo da sala");
-    }
+  const requestedSlug = input.slug?.trim();
+  let slug: string;
+
+  if (requestedSlug) {
+    const baseSlug = ensureValidSlug(requestedSlug);
+    assertSlugAvailable(baseSlug);
+    slug = baseSlug;
+  } else {
+    const readableSlug = normalizeRoomSlug(input.name);
+    const baseSlug = readableSlug.length >= 3 ? readableSlug : `${readableSlug || "sala"}-${createRoomSlug()}`;
+    slug = createAvailableRoomSlug(baseSlug);
   }
 
   const room = db
@@ -81,9 +122,12 @@ export function createRoom(input: RoomInput, creatorId: string) {
       id: createId("room"),
       slug,
       name: input.name,
+      type: input.type ?? "rave",
       description: input.description,
       category: input.category,
       bannerUrl: input.bannerUrl ?? null,
+      coverUrl: input.coverUrl ?? null,
+      backgroundUrl: input.backgroundUrl ?? null,
       creatorId,
       isActive: input.isActive ?? true,
       createdAt: timestamp,
@@ -127,9 +171,17 @@ export function createRoom(input: RoomInput, creatorId: string) {
 export function updateRoom(roomId: string, input: RoomPatch) {
   const patch: Partial<typeof rooms.$inferInsert> = { updatedAt: now() };
   if (input.name !== undefined) patch.name = input.name;
+  if (input.slug !== undefined) {
+    const slug = ensureValidSlug(input.slug);
+    assertSlugAvailable(slug, roomId);
+    patch.slug = slug;
+  }
+  if (input.type !== undefined) patch.type = input.type;
   if (input.description !== undefined) patch.description = input.description;
   if (input.category !== undefined) patch.category = input.category;
   if (input.bannerUrl !== undefined) patch.bannerUrl = input.bannerUrl;
+  if (input.coverUrl !== undefined) patch.coverUrl = input.coverUrl;
+  if (input.backgroundUrl !== undefined) patch.backgroundUrl = input.backgroundUrl;
   if (input.isActive !== undefined) {
     patch.isActive = input.isActive;
     patch.endedAt = input.isActive ? null : now();
@@ -151,10 +203,18 @@ function addUploadCandidate(
   }
 }
 
-function collectRoomCleanupTargets(roomId: string, bannerUrl?: string | null) {
+function collectRoomCleanupTargets(
+  roomId: string,
+  bannerUrl?: string | null,
+  coverUrl?: string | null,
+  backgroundUrl?: string | null
+) {
   const uploadCandidates = new Map<string, UploadCleanupCandidate>();
 
-  if (bannerUrl) {
+  for (const url of [bannerUrl, coverUrl, backgroundUrl]) {
+    if (!url) {
+      continue;
+    }
     addUploadCandidate(
       uploadCandidates,
       db
@@ -165,7 +225,7 @@ function collectRoomCleanupTargets(roomId: string, bannerUrl?: string | null) {
           url: uploads.url
         })
         .from(uploads)
-        .where(eq(uploads.url, bannerUrl))
+        .where(eq(uploads.url, url))
         .get()
     );
   }
@@ -218,6 +278,27 @@ function collectRoomCleanupTargets(roomId: string, bannerUrl?: string | null) {
     });
   }
 
+  const roomImages = db
+    .select({
+      uploadId: uploads.id,
+      uploadType: uploads.type,
+      uploadFilename: uploads.filename,
+      uploadUrl: uploads.url
+    })
+    .from(messages)
+    .innerJoin(uploads, eq(messages.imageUploadId, uploads.id))
+    .where(eq(messages.roomId, roomId))
+    .all();
+
+  for (const row of roomImages) {
+    addUploadCandidate(uploadCandidates, {
+      id: row.uploadId,
+      type: row.uploadType,
+      filename: row.uploadFilename,
+      url: row.uploadUrl
+    });
+  }
+
   return {
     videoIds: [...new Set(roomVideos.map((row) => row.videoId))],
     audioIds: [...new Set(roomAudios.map((row) => row.audioId))],
@@ -240,6 +321,13 @@ function uploadStillReferenced(upload: UploadCleanupCandidate) {
     .get();
   if (audioReference) return true;
 
+  const messageImageReference = db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(eq(messages.imageUploadId, upload.id))
+    .get();
+  if (messageImageReference) return true;
+
   const stickerReference = db
     .select({ id: stickers.id })
     .from(stickers)
@@ -253,6 +341,20 @@ function uploadStillReferenced(upload: UploadCleanupCandidate) {
     .where(eq(rooms.bannerUrl, upload.url))
     .get();
   if (roomBannerReference) return true;
+
+  const roomBackgroundReference = db
+    .select({ id: rooms.id })
+    .from(rooms)
+    .where(eq(rooms.backgroundUrl, upload.url))
+    .get();
+  if (roomBackgroundReference) return true;
+
+  const roomCoverReference = db
+    .select({ id: rooms.id })
+    .from(rooms)
+    .where(eq(rooms.coverUrl, upload.url))
+    .get();
+  if (roomCoverReference) return true;
 
   const avatarReference = db
     .select({ id: users.id })
@@ -269,7 +371,7 @@ export function deleteRoom(roomId: string) {
     throw notFound("Sala nao encontrada");
   }
 
-  const targets = collectRoomCleanupTargets(room.id, room.bannerUrl);
+  const targets = collectRoomCleanupTargets(room.id, room.bannerUrl, room.coverUrl, room.backgroundUrl);
 
   db.transaction((tx) => {
     if (targets.audioIds.length > 0) {
@@ -312,7 +414,10 @@ export function getRoomBySlug(slug: string, userId: string) {
       id: rooms.id,
       slug: rooms.slug,
       name: rooms.name,
+      type: rooms.type,
       bannerUrl: rooms.bannerUrl,
+      coverUrl: rooms.coverUrl,
+      backgroundUrl: rooms.backgroundUrl,
       description: rooms.description,
       category: rooms.category,
       creatorId: rooms.creatorId,

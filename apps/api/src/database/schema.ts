@@ -118,7 +118,10 @@ export const rooms = sqliteTable(
     id: text("id").primaryKey(),
     slug: text("slug").notNull().unique(),
     name: text("name").notNull(),
+    type: text("type", { enum: ["rave", "group"] }).notNull().default("rave"),
     bannerUrl: text("bannerUrl"),
+    coverUrl: text("coverUrl"),
+    backgroundUrl: text("backgroundUrl"),
     description: text("description").notNull(),
     category: text("category").notNull(),
     creatorId: text("creatorId")
@@ -132,6 +135,7 @@ export const rooms = sqliteTable(
   (table) => ({
     slugIdx: uniqueIndex("rooms_slug_idx").on(table.slug),
     creatorIdx: index("rooms_creator_idx").on(table.creatorId),
+    typeIdx: index("rooms_type_idx").on(table.type),
     activeIdx: index("rooms_active_idx").on(table.isActive),
     categoryIdx: index("rooms_category_idx").on(table.category)
   })
@@ -273,12 +277,17 @@ export const stickers = sqliteTable(
     uploadId: text("uploadId")
       .notNull()
       .references(() => uploads.id, { onDelete: "cascade" }),
+    originalCreatorId: text("originalCreatorId").references(() => users.id, { onDelete: "set null" }),
+    originalCreatedAt: integer("originalCreatedAt", { mode: "timestamp_ms" }),
+    sourceStickerId: text("sourceStickerId"),
     name: text("name").notNull(),
     imageUrl: text("imageUrl").notNull(),
     createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull()
   },
   (table) => ({
-    packIdx: index("stickers_pack_idx").on(table.packId)
+    packIdx: index("stickers_pack_idx").on(table.packId),
+    originalCreatorIdx: index("stickers_original_creator_idx").on(table.originalCreatorId),
+    sourceIdx: index("stickers_source_idx").on(table.sourceStickerId)
   })
 );
 
@@ -300,6 +309,63 @@ export const audios = sqliteTable(
   })
 );
 
+export const polls = sqliteTable(
+  "polls",
+  {
+    id: text("id").primaryKey(),
+    roomId: text("roomId")
+      .notNull()
+      .references(() => rooms.id, { onDelete: "cascade" }),
+    creatorId: text("creatorId").references(() => users.id, { onDelete: "set null" }),
+    question: text("question").notNull(),
+    allowsMultiple: integer("allowsMultiple", { mode: "boolean" }).notNull().default(false),
+    closesAt: integer("closesAt", { mode: "timestamp_ms" }),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull()
+  },
+  (table) => ({
+    roomIdx: index("polls_room_idx").on(table.roomId),
+    creatorIdx: index("polls_creator_idx").on(table.creatorId),
+    createdIdx: index("polls_created_idx").on(table.createdAt)
+  })
+);
+
+export const pollOptions = sqliteTable(
+  "poll_options",
+  {
+    id: text("id").primaryKey(),
+    pollId: text("pollId")
+      .notNull()
+      .references(() => polls.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    sortOrder: integer("sortOrder").notNull().default(0),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull()
+  },
+  (table) => ({
+    pollIdx: index("poll_options_poll_idx").on(table.pollId)
+  })
+);
+
+export const pollVotes = sqliteTable(
+  "poll_votes",
+  {
+    pollId: text("pollId")
+      .notNull()
+      .references(() => polls.id, { onDelete: "cascade" }),
+    optionId: text("optionId")
+      .notNull()
+      .references(() => pollOptions.id, { onDelete: "cascade" }),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull()
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.pollId, table.userId, table.optionId] }),
+    optionIdx: index("poll_votes_option_idx").on(table.optionId),
+    userIdx: index("poll_votes_user_idx").on(table.userId)
+  })
+);
+
 export const messages = sqliteTable(
   "messages",
   {
@@ -308,11 +374,13 @@ export const messages = sqliteTable(
       .notNull()
       .references(() => rooms.id, { onDelete: "cascade" }),
     userId: text("userId").references(() => users.id, { onDelete: "set null" }),
-    type: text("type", { enum: ["text", "sticker", "audio", "system"] }).notNull(),
+    type: text("type", { enum: ["text", "sticker", "audio", "image", "poll", "system"] }).notNull(),
     body: text("body"),
     replyToMessageId: text("replyToMessageId"),
     stickerId: text("stickerId").references(() => stickers.id, { onDelete: "set null" }),
     audioId: text("audioId").references(() => audios.id, { onDelete: "set null" }),
+    imageUploadId: text("imageUploadId").references(() => uploads.id, { onDelete: "set null" }),
+    pollId: text("pollId").references(() => polls.id, { onDelete: "set null" }),
     isPinned: integer("isPinned", { mode: "boolean" }).notNull().default(false),
     deletedAt: integer("deletedAt", { mode: "timestamp_ms" }),
     createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull()
@@ -320,7 +388,10 @@ export const messages = sqliteTable(
   (table) => ({
     roomCreatedIdx: index("messages_room_created_idx").on(table.roomId, table.createdAt),
     pinnedIdx: index("messages_pinned_idx").on(table.roomId, table.isPinned),
-    userIdx: index("messages_user_idx").on(table.userId)
+    roomUserIdx: index("messages_room_user_idx").on(table.roomId, table.userId),
+    userIdx: index("messages_user_idx").on(table.userId),
+    imageUploadIdx: index("messages_image_upload_idx").on(table.imageUploadId),
+    pollIdx: index("messages_poll_idx").on(table.pollId)
   })
 );
 
@@ -398,3 +469,5 @@ export type RoomContent = typeof roomContents.$inferSelect;
 export type Video = typeof videos.$inferSelect;
 export type Upload = typeof uploads.$inferSelect;
 export type Sticker = typeof stickers.$inferSelect;
+export type Poll = typeof polls.$inferSelect;
+export type PollOption = typeof pollOptions.$inferSelect;
