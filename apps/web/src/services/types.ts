@@ -19,6 +19,8 @@ export type Room = {
   bannerUrl?: string | null;
   coverUrl?: string | null;
   backgroundUrl?: string | null;
+  radioEnabled: boolean;
+  radioUrl?: string | null;
   description: string;
   category: string;
   creatorId: string;

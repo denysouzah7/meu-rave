@@ -4,6 +4,7 @@ import { authClient } from "@/lib/auth-client";
 import { useMe } from "@/hooks/useApi";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
+import { GlobalRadioDock } from "@/components/radio/GlobalRadioDock";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -98,13 +99,6 @@ export function AppShell() {
               Haru Space
             </Link>
             <div className="flex items-center gap-2">
-              {user?.role === "admin" && (
-                <Button size="icon" variant="ghost" asChild aria-label="Admin">
-                  <Link to="/admin">
-                    <Shield className="h-4 w-4" />
-                  </Link>
-                </Button>
-              )}
               <Button size="icon" variant="ghost" asChild aria-label="Perfil">
                 <Link to="/perfil">
                   <Avatar src={user?.image} name={user?.name} className="h-8 w-8" />
@@ -123,6 +117,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      {!isRoomRoute && <GlobalRadioDock />}
     </div>
   );
 }

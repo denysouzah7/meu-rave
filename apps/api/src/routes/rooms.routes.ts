@@ -41,6 +41,8 @@ const roomSchema = z.object({
   bannerUrl: optionalUrl,
   coverUrl: optionalUrl,
   backgroundUrl: optionalUrl,
+  radioEnabled: z.boolean().optional(),
+  radioUrl: optionalUrl,
   isActive: z.boolean().optional()
 });
 

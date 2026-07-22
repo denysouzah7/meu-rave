@@ -122,6 +122,8 @@ export const rooms = sqliteTable(
     bannerUrl: text("bannerUrl"),
     coverUrl: text("coverUrl"),
     backgroundUrl: text("backgroundUrl"),
+    radioEnabled: integer("radioEnabled", { mode: "boolean" }).notNull().default(false),
+    radioUrl: text("radioUrl"),
     description: text("description").notNull(),
     category: text("category").notNull(),
     creatorId: text("creatorId")

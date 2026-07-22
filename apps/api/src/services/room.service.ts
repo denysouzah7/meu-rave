@@ -29,6 +29,8 @@ export type RoomInput = {
   bannerUrl?: string | null | undefined;
   coverUrl?: string | null | undefined;
   backgroundUrl?: string | null | undefined;
+  radioEnabled?: boolean | undefined;
+  radioUrl?: string | null | undefined;
   isActive?: boolean | undefined;
 };
 
@@ -41,6 +43,8 @@ export type RoomPatch = {
   bannerUrl?: string | null | undefined;
   coverUrl?: string | null | undefined;
   backgroundUrl?: string | null | undefined;
+  radioEnabled?: boolean | undefined;
+  radioUrl?: string | null | undefined;
   isActive?: boolean | undefined;
 };
 
@@ -73,6 +77,20 @@ function assertSlugAvailable(slug: string, roomId?: string) {
   }
 }
 
+function normalizeRadioConfig(type: "rave" | "group", enabled?: boolean, url?: string | null) {
+  const radioUrl = url?.trim() || null;
+  if (type !== "group") {
+    return { radioEnabled: false, radioUrl: null };
+  }
+  if (enabled && !radioUrl) {
+    throw badRequest("Informe o link do streaming para ativar a web radio");
+  }
+  return {
+    radioEnabled: Boolean(enabled && radioUrl),
+    radioUrl: radioUrl && enabled !== false ? radioUrl : null
+  };
+}
+
 export function listRooms(includeInactive = false) {
   const where = includeInactive ? undefined : eq(rooms.isActive, true);
   const query = db
@@ -84,6 +102,8 @@ export function listRooms(includeInactive = false) {
       bannerUrl: rooms.bannerUrl,
       coverUrl: rooms.coverUrl,
       backgroundUrl: rooms.backgroundUrl,
+      radioEnabled: rooms.radioEnabled,
+      radioUrl: rooms.radioUrl,
       description: rooms.description,
       category: rooms.category,
       creatorId: rooms.creatorId,
@@ -103,6 +123,8 @@ export function listRooms(includeInactive = false) {
 
 export function createRoom(input: RoomInput, creatorId: string) {
   const timestamp = now();
+  const type = input.type ?? "rave";
+  const radio = normalizeRadioConfig(type, input.radioEnabled, input.radioUrl);
   const requestedSlug = input.slug?.trim();
   let slug: string;
 
@@ -122,12 +144,14 @@ export function createRoom(input: RoomInput, creatorId: string) {
       id: createId("room"),
       slug,
       name: input.name,
-      type: input.type ?? "rave",
+      type,
       description: input.description,
       category: input.category,
       bannerUrl: input.bannerUrl ?? null,
       coverUrl: input.coverUrl ?? null,
       backgroundUrl: input.backgroundUrl ?? null,
+      radioEnabled: radio.radioEnabled,
+      radioUrl: radio.radioUrl,
       creatorId,
       isActive: input.isActive ?? true,
       createdAt: timestamp,
@@ -169,6 +193,11 @@ export function createRoom(input: RoomInput, creatorId: string) {
 }
 
 export function updateRoom(roomId: string, input: RoomPatch) {
+  const existing = db.select().from(rooms).where(eq(rooms.id, roomId)).get();
+  if (!existing) {
+    throw notFound("Sala nao encontrada");
+  }
+
   const patch: Partial<typeof rooms.$inferInsert> = { updatedAt: now() };
   if (input.name !== undefined) patch.name = input.name;
   if (input.slug !== undefined) {
@@ -182,6 +211,16 @@ export function updateRoom(roomId: string, input: RoomPatch) {
   if (input.bannerUrl !== undefined) patch.bannerUrl = input.bannerUrl;
   if (input.coverUrl !== undefined) patch.coverUrl = input.coverUrl;
   if (input.backgroundUrl !== undefined) patch.backgroundUrl = input.backgroundUrl;
+  if (input.type !== undefined || input.radioEnabled !== undefined || input.radioUrl !== undefined) {
+    const nextType = input.type ?? existing.type;
+    const radio = normalizeRadioConfig(
+      nextType,
+      input.radioEnabled ?? existing.radioEnabled,
+      input.radioUrl !== undefined ? input.radioUrl : existing.radioUrl
+    );
+    patch.radioEnabled = radio.radioEnabled;
+    patch.radioUrl = radio.radioUrl;
+  }
   if (input.isActive !== undefined) {
     patch.isActive = input.isActive;
     patch.endedAt = input.isActive ? null : now();
@@ -418,6 +457,8 @@ export function getRoomBySlug(slug: string, userId: string) {
       bannerUrl: rooms.bannerUrl,
       coverUrl: rooms.coverUrl,
       backgroundUrl: rooms.backgroundUrl,
+      radioEnabled: rooms.radioEnabled,
+      radioUrl: rooms.radioUrl,
       description: rooms.description,
       category: rooms.category,
       creatorId: rooms.creatorId,

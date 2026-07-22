@@ -82,6 +82,8 @@ export function migrate() {
       "bannerUrl" TEXT,
       "coverUrl" TEXT,
       "backgroundUrl" TEXT,
+      "radioEnabled" INTEGER NOT NULL DEFAULT 0,
+      "radioUrl" TEXT,
       "description" TEXT NOT NULL,
       "category" TEXT NOT NULL,
       "creatorId" TEXT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
@@ -281,6 +283,16 @@ export function migrate() {
   if (!roomColumns.some((column) => column.name === "coverUrl")) {
     sqlite.exec(`
       ALTER TABLE "rooms" ADD COLUMN "coverUrl" TEXT;
+    `);
+  }
+  if (!roomColumns.some((column) => column.name === "radioEnabled")) {
+    sqlite.exec(`
+      ALTER TABLE "rooms" ADD COLUMN "radioEnabled" INTEGER NOT NULL DEFAULT 0;
+    `);
+  }
+  if (!roomColumns.some((column) => column.name === "radioUrl")) {
+    sqlite.exec(`
+      ALTER TABLE "rooms" ADD COLUMN "radioUrl" TEXT;
     `);
   }
   sqlite.exec(`CREATE INDEX IF NOT EXISTS "rooms_type_idx" ON "rooms" ("type");`);

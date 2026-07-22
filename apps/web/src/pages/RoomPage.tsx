@@ -1,7 +1,20 @@
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
-import { AlertTriangle, ChevronLeft, Clock3, Copy, Link2, MessageCircle, MessageCircleOff, Trophy, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronLeft,
+  Clock3,
+  Copy,
+  Link2,
+  Loader2,
+  MessageCircle,
+  MessageCircleOff,
+  Trophy,
+  Volume2,
+  VolumeX,
+  X
+} from "lucide-react";
 import type {
   ChatMessage,
   Participant,
@@ -20,6 +33,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useRadioPlayer } from "@/contexts/RadioPlayerContext";
 import { createMediaBackgroundStyle } from "@/lib/media";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +56,11 @@ export function RoomPage() {
   const [messagesHidden, setMessagesHidden] = React.useState(false);
   const roomViewportRef = React.useRef<HTMLElement | null>(null);
   const socketRef = React.useRef<Socket | null>(null);
+  const radio = useRadioPlayer();
+  const activeRadioUrl = radio.currentUrl;
+  const stopRadio = radio.stop;
+  const roomRadioUrl =
+    room?.type === "group" && room.radioEnabled && room.radioUrl ? resolveMediaUrl(room.radioUrl) : "";
 
   const applyPayload = React.useCallback((payload: RoomPayload) => {
     setRoom(payload.room);
@@ -66,6 +85,12 @@ export function RoomPage() {
       applyPayload(initial.data);
     }
   }, [initial.data, applyPayload]);
+
+  React.useEffect(() => {
+    if (room?.type === "rave" && activeRadioUrl) {
+      stopRadio();
+    }
+  }, [activeRadioUrl, room?.type, stopRadio]);
 
   React.useEffect(() => {
     const target = roomViewportRef.current;
@@ -170,8 +195,14 @@ export function RoomPage() {
   const hasMessageRetention = typeof messageRetentionDays === "number" && messageRetentionDays > 0;
   const messageRetentionNotice = hasMessageRetention ? formatMessageRetentionNotice(messageRetentionDays) : "";
   const roomBackgroundStyle = createMediaBackgroundStyle(room.backgroundUrl, 0.82);
+  const hasRadio = roomRadioUrl.length > 0;
+  const radioIsCurrent = radio.isCurrent(roomRadioUrl);
+  const radioPlaying = radioIsCurrent && radio.isPlaying;
+  const radioLoading = radioIsCurrent && radio.isLoading;
   const socket = () => socketRef.current;
   const copyLink = () => void navigator.clipboard.writeText(window.location.href);
+  const subtleIconClass =
+    "h-8 w-8 rounded-full border border-white/10 bg-white/[0.03] p-0 text-[#aebac1] shadow-none hover:bg-white/[0.08] hover:text-white";
 
   return (
     <div
@@ -235,16 +266,42 @@ export function RoomPage() {
             {messagesHidden ? <MessageCircle className="h-5 w-5" /> : <MessageCircleOff className="h-5 w-5" />}
           </Button>
         )}
+        {hasRadio && (
+          <Button
+            size="icon"
+            variant="ghost"
+            className={cn(
+              subtleIconClass,
+              radioPlaying && "border-primary/25 bg-primary/[0.12] text-primary hover:text-primary"
+            )}
+            aria-label={radioPlaying ? "Desativar web radio" : "Ativar web radio"}
+            aria-pressed={radioPlaying}
+            title={radio.error || (radioPlaying ? "Parar web radio" : "Ouvir web radio")}
+            onClick={() => void radio.toggle({ url: roomRadioUrl, title: room.name })}
+          >
+            {radioLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : radioPlaying ? (
+              <Volume2 className="h-4 w-4" />
+            ) : (
+              <VolumeX className="h-4 w-4" />
+            )}
+          </Button>
+        )}
         {hasMessageRetention && (
           <Button
             size="icon"
-            variant={retentionInfoOpen ? "secondary" : "ghost"}
+            variant="ghost"
+            className={cn(
+              subtleIconClass,
+              retentionInfoOpen && "border-primary/25 bg-primary/[0.12] text-primary hover:text-primary"
+            )}
             aria-label={messageRetentionNotice}
             aria-expanded={retentionInfoOpen}
             title={messageRetentionNotice}
             onClick={() => setRetentionInfoOpen((value) => !value)}
           >
-            <Clock3 className="h-5 w-5" />
+            <Clock3 className="h-4 w-4" />
           </Button>
         )}
       </div>
