@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 24% 6%;
+    --foreground: 210 25% 96%;
+    --card: 222 22% 9%;
+    --card-foreground: 210 25% 96%;
+    --popover: 222 22% 9%;
+    --popover-foreground: 210 25% 96%;
+    --primary: 173 84% 43%;
+    --primary-foreground: 190 90% 8%;
+    --secondary: 326 76% 54%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 220 16% 15%;
+    --muted-foreground: 218 13% 68%;
+    --accent: 39 96% 54%;
+    --accent-foreground: 36 78% 8%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 18%;
+    --input: 220 15% 18%;
+    --ring: 173 84% 43%;
+  }
+
+  * {
+    @apply border-border;
+    letter-spacing: 0;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family:
+      Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height: 100vh;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.35);
+  }
+}
+
+@layer components {
+  .app-surface {
+    background:
+      radial-gradient(circle at 12% 12%, rgba(20, 184, 166, 0.16), transparent 28%),
+      radial-gradient(circle at 86% 18%, rgba(236, 72, 153, 0.12), transparent 26%),
+      linear-gradient(135deg, #05070d 0%, #101219 44%, #07090f 100%);
+  }
+
+  .glass-panel {
+    @apply border border-white/10 bg-white/[0.045] shadow-2xl backdrop-blur-xl;
+  }
+
+  .scanline {
+    background-image: linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+    background-size: 100% 22px;
+  }
+
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(20, 184, 166, 0.5) rgba(255, 255, 255, 0.06);
+  }
+
+  .thin-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .thin-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(20, 184, 166, 0.5);
+    border-radius: 8px;
+  }
+
+  .room-mobile-chat .room-chat-header {
+    display: none;
+  }
+
+  @media (max-width: 640px) {
+    .room-mobile-stack {
+      height: calc(var(--room-visual-height, 100dvh) - 3.5rem);
+      max-height: calc(var(--room-visual-height, 100dvh) - 3.5rem);
+      min-height: 0;
+      background: #071014;
+    }
+
+    .room-mobile-stage {
+      flex: 0 0 auto;
+    }
+
+    .room-mobile-stack--video-only .room-mobile-stage {
+      min-height: 0;
+      flex: 1 1 0;
+    }
+
+    .room-mobile-stack--video-only .room-mobile-stage > * {
+      height: 100%;
+    }
+
+    .room-mobile-stage > * {
+      transition: height 180ms ease;
+    }
+
+    .room-mobile-chat.room-chat-panel {
+      height: auto !important;
+      min-height: 0 !important;
+      flex: 1 1 0 !important;
+      border-right-width: 0;
+      border-left-width: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .room-mobile-chat .room-chat-body {
+      min-height: 0;
+      flex: 1 1 0;
+    }
+
+    .room-mobile-chat .room-chat-messages {
+      min-height: 0;
+      flex: 1 1 0;
+      padding-bottom: 0.75rem;
+    }
+
+    .room-mobile-chat .room-chat-composer {
+      position: static;
+      z-index: auto;
+      flex: 0 0 auto;
+    }
+  }
+}
