@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   Clock3,
   Copy,
-  Link2,
   Loader2,
   MessageCircle,
   MessageCircleOff,
@@ -41,26 +40,53 @@ import { createMediaBackgroundStyle } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { markRoomJoined } from "@/utils/joined-rooms";
 
+function fallbackCopy(text: string) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    document.execCommand("copy");
+  } catch {
+    // ignore
+  }
+  document.body.removeChild(textarea);
+}
+
 export function RoomPage() {
   const { slug = "" } = useParams();
   const { data: me } = useMe();
   const queryClient = useQueryClient();
   const initial = useRoom(slug);
-  const [room, setRoom] = React.useState<Room | null>(null);
+  const [room, setRoom] = React.useState<Room | null>(initial.data?.room ?? null);
   const [participant, setParticipant] = React.useState<Participant | null>(
-    null,
+    initial.data?.participant ?? null,
   );
-  const [contents, setContents] = React.useState<RoomContent[]>([]);
-  const [playback, setPlayback] = React.useState<PlaybackState | null>(null);
-  const [participants, setParticipants] = React.useState<Participant[]>([]);
-  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
-  const [messageCount, setMessageCount] = React.useState(0);
+  const [contents, setContents] = React.useState<RoomContent[]>(
+    initial.data?.contents ?? [],
+  );
+  const [playback, setPlayback] = React.useState<PlaybackState | null>(
+    initial.data?.playback ?? null,
+  );
+  const [participants, setParticipants] = React.useState<Participant[]>(
+    initial.data?.participants ?? [],
+  );
+  const [messages, setMessages] = React.useState<ChatMessage[]>(
+    initial.data?.messages ?? [],
+  );
+  const [messageCount, setMessageCount] = React.useState(
+    initial.data?.messageCount ?? 0,
+  );
   const [messageRanking, setMessageRanking] = React.useState<
     RoomMessageRankingItem[]
-  >([]);
+  >(initial.data?.messageRanking ?? []);
   const [messageRetentionDays, setMessageRetentionDays] = React.useState<
     number | null
-  >(null);
+  >(initial.data?.messageRetentionDays ?? null);
   const [toast, setToast] = React.useState<{
     message: string;
     tone: "error" | "info";
@@ -68,11 +94,9 @@ export function RoomPage() {
   const [roomInfoOpen, setRoomInfoOpen] = React.useState(false);
   const [retentionInfoOpen, setRetentionInfoOpen] = React.useState(false);
   const [messagesHidden, setMessagesHidden] = React.useState(false);
+  const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
   const roomViewportRef = React.useRef<HTMLElement | null>(null);
   const socketRef = React.useRef<Socket | null>(null);
-  const radio = useRadioPlayer();
-  const activeRadioUrl = radio.currentUrl;
-  const stopRadio = radio.stop;
   const roomRadioUrl =
     room?.type === "group" && room.radioEnabled && room.radioUrl
       ? resolveMediaUrl(room.radioUrl)
@@ -143,10 +167,13 @@ export function RoomPage() {
   }, [me?.user.id, participant, room?.slug]);
 
   React.useEffect(() => {
-    if (room?.type === "rave" && activeRadioUrl) {
-      stopRadio();
+    if (room?.type === "rave") {
+      const audio = document.querySelector<HTMLAudioElement>("audio");
+      if (audio && !audio.paused) {
+        audio.pause();
+      }
     }
-  }, [activeRadioUrl, room?.type, stopRadio]);
+  }, [room?.type]);
 
   React.useEffect(() => {
     const target = roomViewportRef.current;
@@ -331,18 +358,21 @@ export function RoomPage() {
     ? formatMessageRetentionNotice(messageRetentionDays)
     : "";
   const hasRadio = roomRadioUrl.length > 0;
-  const radioIsCurrent = radio.isCurrent(roomRadioUrl);
-  const radioPlaying = radioIsCurrent && radio.isPlaying;
-  const radioLoading = radioIsCurrent && radio.isLoading;
   const socket = () => socketRef.current;
-  const copyLink = () =>
-    void navigator.clipboard.writeText(window.location.href);
+  const copyLink = () => {
+    const text = window.location.href;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  };
   const subtleIconClass =
     "h-8 w-8 rounded-full border border-white/10 bg-white/[0.03] p-0 text-[#aebac1] shadow-none hover:bg-white/[0.08] hover:text-white";
 
   return (
     <div
-      className="room-page room-wallpaper space-y-4 max-sm:flex max-sm:h-full max-sm:min-h-0 max-sm:flex-col max-sm:overflow-hidden max-sm:space-y-0"
+      className="room-page room-wallpaper space-y-4 max-sm:flex max-sm:h-full max-sm:min-h-0 max-sm:flex-col max-sm:overflow-hidden max-sm:space-y-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden lg:space-y-0"
       style={roomBackgroundStyle}
     >
       {toast && (
@@ -358,7 +388,7 @@ export function RoomPage() {
         </div>
       )}
 
-      <div className="room-topbar sticky top-0 z-30 mx-auto flex h-14 w-full max-w-5xl shrink-0 items-center gap-2 rounded-lg border border-white/10 bg-[#111b21] px-2 shadow-2xl max-sm:static max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:shadow-none lg:top-4">
+      <div className="room-topbar sticky top-0 z-30 mx-auto flex h-16 w-full max-w-5xl shrink-0 items-center gap-2 rounded-lg border border-white/10 bg-[#111b21] px-2 shadow-2xl max-sm:static max-sm:h-14 max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:shadow-none lg:mt-2">
         <Button size="icon" variant="ghost" asChild aria-label="Voltar">
           <Link to="/">
             <ChevronLeft className="h-5 w-5" />
@@ -376,12 +406,12 @@ export function RoomPage() {
             name={room.name}
             src={resolveMediaUrl(room.bannerUrl)}
             className={cn(
-              "h-10 w-10 border border-primary/30 bg-primary/[0.16]",
+              "h-11 w-11 border border-primary/30 bg-primary/[0.16] max-sm:h-10 max-sm:w-10",
               isGroup ? "rounded-full" : "rounded-none",
             )}
           />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-bold text-white">
+            <span className="block truncate text-[15px] font-bold text-white max-sm:text-sm">
               {room.name}
             </span>
             <span className="block truncate text-xs text-[#aebac1]">
@@ -412,34 +442,7 @@ export function RoomPage() {
           </Button>
         )}
         {hasRadio && (
-          <Button
-            size="icon"
-            variant="ghost"
-            className={cn(
-              subtleIconClass,
-              radioPlaying &&
-                "border-primary/25 bg-primary/[0.12] text-primary hover:text-primary",
-            )}
-            aria-label={
-              radioPlaying ? "Desativar web radio" : "Ativar web radio"
-            }
-            aria-pressed={radioPlaying}
-            title={
-              radio.error ||
-              (radioPlaying ? "Parar web radio" : "Ouvir web radio")
-            }
-            onClick={() =>
-              void radio.toggle({ url: roomRadioUrl, title: room.name })
-            }
-          >
-            {radioLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : radioPlaying ? (
-              <Volume2 className="h-4 w-4" />
-            ) : (
-              <VolumeX className="h-4 w-4" />
-            )}
-          </Button>
+          <RoomRadioToggle url={roomRadioUrl} title={room.name} subtleIconClass={subtleIconClass} />
         )}
         {hasMessageRetention && (
           <Button
@@ -488,7 +491,7 @@ export function RoomPage() {
       <section
         ref={roomViewportRef}
         className={cn(
-          "room-mobile-stack mx-auto max-w-5xl space-y-3 max-sm:flex max-sm:w-full max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col max-sm:overflow-hidden max-sm:space-y-0 max-sm:pt-2",
+          "room-mobile-stack mx-auto max-w-5xl space-y-3 max-sm:flex max-sm:w-full max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col max-sm:overflow-hidden max-sm:space-y-0 max-sm:pt-2 lg:flex lg:w-full lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:space-y-0 lg:pt-2",
           messagesAreHidden && "room-mobile-stack--video-only",
           isGroup && "room-mobile-stack--group max-sm:pt-0",
         )}
@@ -496,7 +499,7 @@ export function RoomPage() {
         {!isGroup && (
           <div
             className={cn(
-              "room-mobile-stage room-stage-texture sticky top-16 z-20 rounded-lg border border-primary/[0.16] p-2 shadow-2xl backdrop-blur-xl max-sm:static max-sm:shrink-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:p-1.5 max-sm:shadow-none lg:top-4",
+              "room-mobile-stage room-stage-texture sticky top-16 z-20 rounded-lg border border-primary/[0.16] p-2 shadow-2xl backdrop-blur-xl max-sm:static max-sm:shrink-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:p-1.5 max-sm:shadow-none lg:static lg:shrink-0 lg:rounded-none lg:border-x-0 lg:border-t-0 lg:p-1.5 lg:shadow-none lg:top-0",
               messagesAreHidden && "max-sm:min-h-0 max-sm:flex-1",
             )}
           >
@@ -524,8 +527,8 @@ export function RoomPage() {
             participant={participant}
             canModerate={false}
             className={cn(
-              "room-mobile-chat h-[min(520px,52svh)] min-h-[320px] max-sm:h-auto max-sm:min-h-0 max-sm:flex-1",
-              isGroup && "h-[min(760px,calc(100vh-132px))] min-h-[620px]",
+              "room-mobile-chat h-[min(520px,52svh)] min-h-[320px] max-sm:h-auto max-sm:min-h-0 max-sm:flex-1 lg:h-auto lg:min-h-0 lg:flex-1",
+              isGroup && "h-[min(760px,calc(100vh-132px))] min-h-[620px] lg:h-auto lg:min-h-0",
             )}
             onOpenRoomInfo={() => setRoomInfoOpen(true)}
             onSend={(payload) => socket()?.emit("chat:message", payload)}
@@ -539,6 +542,7 @@ export function RoomPage() {
             onPin={(messageId, isPinned) =>
               socket()?.emit("chat:pin", { messageId, isPinned })
             }
+            onUserClick={(userId) => setSelectedUserId(userId)}
           />
         )}
       </section>
@@ -554,6 +558,15 @@ export function RoomPage() {
           onClose={() => setRoomInfoOpen(false)}
           onCopyLink={copyLink}
           onPatchParticipant={() => undefined}
+        />
+      )}
+
+      {selectedUserId && (
+        <UserProfileDialog
+          userId={selectedUserId}
+          participants={participants}
+          messageRanking={messageRanking}
+          onClose={() => setSelectedUserId(null)}
         />
       )}
     </div>
@@ -781,13 +794,13 @@ function RoomInfoPanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 overflow-hidden bg-black/70 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       onClick={onClose}
     >
       <div
-        className="ml-auto flex h-full w-full max-w-md flex-col border-l border-white/10 bg-[#0b141a] shadow-2xl"
+        className="ml-auto flex h-[100dvh] w-full max-w-md min-w-0 flex-col overflow-hidden border-l border-white/10 bg-[#0b141a] shadow-2xl sm:max-w-xl lg:max-w-2xl xl:max-w-3xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-[#111b21] px-4">
@@ -804,14 +817,14 @@ function RoomInfoPanel({
           </Button>
         </div>
 
-        <div className="thin-scrollbar flex-1 overflow-y-auto p-4">
-          <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.04]">
+        <div className="thin-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4 lg:p-5">
+          <div className="min-w-0 overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] lg:grid lg:grid-cols-[minmax(220px,0.75fr)_minmax(0,1.25fr)]">
             <div
               className={cn(
-                "relative bg-white/[0.05]",
+                "relative min-w-0 bg-white/[0.05]",
                 isGroup
-                  ? "flex h-36 items-center justify-center bg-[radial-gradient(circle_at_center,rgba(236,72,153,.18),rgba(255,255,255,.04)_55%,transparent_74%)]"
-                  : "h-40",
+                  ? "flex h-36 items-center justify-center bg-[radial-gradient(circle_at_center,rgba(236,72,153,.18),rgba(255,255,255,.04)_55%,transparent_74%)] sm:h-44 lg:h-full lg:min-h-[280px]"
+                  : "h-40 sm:h-48 lg:h-full lg:min-h-[280px]",
               )}
             >
               {isGroup ? (
@@ -850,7 +863,7 @@ function RoomInfoPanel({
                 </div>
               )}
             </div>
-            <div className="space-y-4 p-4">
+            <div className="min-w-0 space-y-4 p-4 sm:p-5">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[#aebac1]">
                   {isGroup ? "Grupo" : "Rave"}
@@ -868,7 +881,7 @@ function RoomInfoPanel({
                   {roleLabel}
                 </Badge>
               </div>
-              <p className="text-sm leading-relaxed text-[#d1d7db]">
+              <p className="break-words text-sm leading-relaxed text-[#d1d7db]">
                 {room.description}
               </p>
               {rules.length > 0 && (
@@ -891,12 +904,13 @@ function RoomInfoPanel({
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
             <InfoTile label="Online" value={onlineCount} />
             <InfoTile label="Mensagens" value={messagesCount} />
           </div>
 
-          <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] p-3">
+          <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-2 lg:items-start">
+          <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.04] p-3 sm:p-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
                 <Trophy className="h-4 w-4 shrink-0 text-[#fbbf24]" />
@@ -951,11 +965,11 @@ function RoomInfoPanel({
             </div>
           </div>
 
-          <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] p-3">
+          <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.04] p-3 sm:p-4">
             <p className="text-xs font-semibold uppercase text-[#aebac1]">
               Convite
             </p>
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
               <p className="min-w-0 flex-1 truncate rounded-lg bg-black/20 px-3 py-2 text-sm text-[#e9edef]">
                 /sala/{room.slug}
               </p>
@@ -963,24 +977,23 @@ function RoomInfoPanel({
                 size="icon"
                 variant="outline"
                 aria-label="Copiar link"
-                onClick={onCopyLink}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCopyLink();
+                }}
               >
                 <Copy className="h-4 w-4" />
-              </Button>
-              <Button size="icon" variant="outline" aria-label="Salas" asChild>
-                <Link to="/">
-                  <Link2 className="h-4 w-4" />
-                </Link>
               </Button>
             </div>
           </div>
 
-          <div className="mt-4">
+          <div className="min-w-0 lg:col-span-2">
             <ParticipantsPanel
               participants={participants}
               canModerate={canModerate}
               onPatch={onPatchParticipant}
             />
+          </div>
           </div>
         </div>
       </div>
@@ -994,5 +1007,137 @@ function InfoTile({ label, value }: { label: string; value: React.ReactNode }) {
       <p className="truncate text-base font-black text-white">{value}</p>
       <p className="mt-1 text-xs text-[#aebac1]">{label}</p>
     </div>
+  );
+}
+
+function UserProfileDialog({
+  userId,
+  participants,
+  messageRanking,
+  onClose,
+}: {
+  userId: string;
+  participants: Participant[];
+  messageRanking: RoomMessageRankingItem[];
+  onClose: () => void;
+}) {
+  const participant = participants.find((item) => item.userId === userId);
+  const rankingItem = messageRanking.find((item) => item.userId === userId);
+  const name = rankingItem?.name ?? participant?.name ?? "Participante";
+  const image = rankingItem?.image ?? participant?.image ?? null;
+  const messageCount = rankingItem?.messageCount ?? 0;
+  const isOnline = participant?.online ?? false;
+  const role = participant?.role;
+  const joinedAt = participant?.joinedAt;
+
+  const roleLabel =
+    role === "administrator"
+      ? "Administrador"
+      : role === "moderator"
+        ? "Moderador"
+        : role === "viewer"
+          ? "Visualizador"
+          : "Participante";
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm overflow-hidden rounded-2xl border border-white/10 bg-[#111b21] shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="relative h-24 bg-[linear-gradient(135deg,rgba(236,72,153,.22),rgba(20,184,166,.14),rgba(255,255,255,.04))]">
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Fechar"
+            className="absolute right-2 top-2 h-8 w-8 bg-black/30 text-white hover:bg-black/50"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="-mt-12 flex flex-col items-center px-4 pb-5 text-center">
+          <Avatar
+            src={resolveMediaUrl(image)}
+            name={name}
+            className="h-20 w-20 rounded-full border-4 border-[#111b21] bg-primary/[0.16] text-2xl shadow-xl"
+          />
+
+          <h2 className="mt-3 break-words text-xl font-black text-white">
+            {name}
+          </h2>
+
+          <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+            <Badge variant="muted">{roleLabel}</Badge>
+            <Badge variant={isOnline ? "default" : "secondary"}>
+              {isOnline ? "Online" : "Offline"}
+            </Badge>
+          </div>
+
+          <div className="mt-4 grid w-full grid-cols-2 gap-2">
+            <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+              <p className="text-lg font-black text-white">{messageCount}</p>
+              <p className="mt-0.5 text-xs text-[#aebac1]">
+                {messageCount === 1 ? "mensagem" : "mensagens"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+              <p className="truncate text-sm font-black text-white">
+                {joinedAt
+                  ? new Date(joinedAt).toLocaleDateString("pt-BR")
+                  : "--"}
+              </p>
+              <p className="mt-0.5 text-xs text-[#aebac1]">Entrou em</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoomRadioToggle({
+  url,
+  title,
+  subtleIconClass,
+}: {
+  url: string;
+  title: string;
+  subtleIconClass: string;
+}) {
+  const radio = useRadioPlayer();
+
+  const radioIsCurrent = radio.isCurrent(url);
+  const radioPlaying = radioIsCurrent && radio.isPlaying;
+  const radioLoading = radioIsCurrent && radio.isLoading;
+
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      className={cn(
+        subtleIconClass,
+        radioPlaying &&
+          "border-primary/25 bg-primary/[0.12] text-primary hover:text-primary",
+      )}
+      aria-label={radioPlaying ? "Desativar web radio" : "Ativar web radio"}
+      aria-pressed={radioPlaying}
+      title={radio.error || (radioPlaying ? "Parar web radio" : "Ouvir web radio")}
+      onClick={() => void radio.toggle({ url, title })}
+    >
+      {radioLoading ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : radioPlaying ? (
+        <Volume2 className="h-4 w-4" />
+      ) : (
+        <VolumeX className="h-4 w-4" />
+      )}
+    </Button>
   );
 }

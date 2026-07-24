@@ -58,7 +58,7 @@ export async function saveUpload(
 
   await pipeline(file.file, createWriteStream(path));
 
-  const url = `${env.PUBLIC_API_URL}/uploads/${type}/${filename}`;
+  const url = `/uploads/${type}/${filename}`;
   const [saved] = db
     .insert(uploads)
     .values({

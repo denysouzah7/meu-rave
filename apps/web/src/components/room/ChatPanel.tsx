@@ -122,6 +122,7 @@ type Props = {
   onLike: (messageId: string) => void;
   onDelete: (messageId: string) => void;
   onPin: (messageId: string, isPinned: boolean) => void;
+  onUserClick?: (userId: string) => void;
 };
 
 export function ChatPanel({
@@ -139,6 +140,7 @@ export function ChatPanel({
   onLike,
   onDelete,
   onPin,
+  onUserClick,
 }: Props) {
   const [body, setBody] = React.useState("");
   const [replyTo, setReplyTo] = React.useState<ChatMessage | null>(null);
@@ -157,10 +159,6 @@ export function ChatPanel({
   const messageById = React.useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
-  );
-  const messageBackgroundStyle = React.useMemo(
-    () => createMediaBackgroundStyle(backgroundUrl, 0.74),
-    [backgroundUrl],
   );
   const queryClient = useQueryClient();
   const saveSticker = useMutation({
@@ -258,12 +256,15 @@ export function ChatPanel({
     }
   };
 
-  let previousDay = "";
+  const messageBackgroundStyle = React.useMemo(
+    () => createMediaBackgroundStyle(backgroundUrl, 0.74),
+    [backgroundUrl],
+  );
 
   return (
     <Card
       className={cn(
-        "room-chat-panel room-panel-texture flex h-[min(760px,calc(100vh-96px))] min-h-[360px] flex-col overflow-hidden border-white/10 shadow-2xl max-sm:h-[min(520px,56svh)] max-sm:min-h-[320px]",
+        "room-chat-panel room-panel-texture flex h-[min(760px,calc(100vh-96px))] min-h-[360px] flex-col overflow-hidden border-white/10 shadow-2xl max-sm:h-[min(520px,56svh)] max-sm:min-h-[320px] lg:h-auto lg:min-h-0 lg:flex-1",
         className,
       )}
     >
@@ -298,71 +299,61 @@ export function ChatPanel({
       </div>
 
       <CardContent className="room-chat-body flex min-h-0 flex-1 flex-col overflow-hidden p-0">
-        <div
-          ref={messagesViewportRef}
-          className="room-chat-messages room-wallpaper thin-scrollbar min-h-0 flex-1 overscroll-contain overflow-y-auto scroll-pb-4 p-3 pb-4"
-          style={messageBackgroundStyle}
-        >
-          <div className="space-y-1.5">
-            {messages.map((message) => {
-              const day = dayKey(message.createdAt);
-              const showDay = day !== previousDay;
-              previousDay = day;
-
-              return (
-                <React.Fragment key={message.id}>
-                  {showDay && <DayDivider value={message.createdAt} />}
-                  <MessageBubble
-                    message={message}
-                    replyToMessage={
-                      message.replyToMessageId
-                        ? (messageById.get(message.replyToMessageId) ?? null)
-                        : null
-                    }
-                    own={message.userId === currentUserId}
-                    canModerate={canModerate}
-                    actionsOpen={openActionsId === message.id}
-                    onToggleActions={() =>
-                      setOpenActionsId((current) =>
-                        current === message.id ? null : message.id,
-                      )
-                    }
-                    onReply={() => {
-                      setReplyTo(message);
-                      setOpenActionsId(null);
-                    }}
-                    onCopy={() => {
-                      if (message.body) {
-                        void navigator.clipboard.writeText(message.body);
-                      }
-                      setOpenActionsId(null);
-                    }}
-                    onLike={() => {
-                      onLike(message.id);
-                      setOpenActionsId(null);
-                    }}
-                    onDelete={() => {
-                      onDelete(message.id);
-                      setOpenActionsId(null);
-                    }}
-                    onPin={() => {
-                      onPin(message.id, !message.isPinned);
-                      setOpenActionsId(null);
-                    }}
-                    onSaveSticker={(stickerId) => {
-                      saveSticker.mutate(stickerId);
-                      setOpenActionsId(null);
-                    }}
-                    onOpenStickerDetails={() =>
-                      setSelectedStickerMessage(message)
-                    }
-                    onPollVote={onPollVote}
-                  />
-                </React.Fragment>
-              );
-            })}
-          </div>
-        </div>
+        <MessageList
+          messages={messages}
+          currentUserId={currentUserId}
+          canModerate={canModerate}
+          messageById={messageById}
+          messageBackgroundStyle={messageBackgroundStyle}
+          messagesViewportRef={messagesViewportRef}
+          openActionsId={openActionsId}
+          onToggleActions={(id) =>
+            setOpenActionsId((current) =>
+              current === id ? null : id,
+            )
+          }
+          onReply={(message) => {
+            setReplyTo(message);
+            setOpenActionsId(null);
+            const focusBox = () => {
+              const box = messageBoxRef.current;
+              if (!box) return;
+              box.focus({ preventScroll: true });
+              const len = box.value.length;
+              box.setSelectionRange(len, len);
+            };
+            window.requestAnimationFrame(() =>
+              window.setTimeout(focusBox, 50),
+            );
+          }}
+          onCopy={(text) => {
+            if (text) {
+              void navigator.clipboard.writeText(text);
+            }
+            setOpenActionsId(null);
+          }}
+          onLike={(messageId) => {
+            onLike(messageId);
+            setOpenActionsId(null);
+          }}
+          onDelete={(messageId) => {
+            onDelete(messageId);
+            setOpenActionsId(null);
+          }}
+          onPin={(messageId, isPinned) => {
+            onPin(messageId, isPinned);
+            setOpenActionsId(null);
+          }}
+          onSaveSticker={(stickerId) => {
+            saveSticker.mutate(stickerId);
+            setOpenActionsId(null);
+          }}
+          onOpenStickerDetails={(message) =>
+            setSelectedStickerMessage(message)
+          }
+          onPollVote={onPollVote}
+          onUserClick={onUserClick}
+        />
 
         <div className="room-chat-composer sticky bottom-0 z-30 shrink-0 bg-[#0b141a]/98 shadow-[0_-10px_22px_rgba(0,0,0,0.20)] backdrop-blur max-sm:static">
           {replyTo && (
@@ -609,10 +600,110 @@ export function ChatPanel({
   );
 }
 
-function MessageBubble({
+type MessageListProps = {
+  messages: ChatMessage[];
+  currentUserId: string;
+  canModerate: boolean;
+  messageById: Map<string, ChatMessage>;
+  messageBackgroundStyle: React.CSSProperties | undefined;
+  messagesViewportRef: React.MutableRefObject<HTMLDivElement | null>;
+  openActionsId: string | null;
+  onToggleActions: (id: string) => void;
+  onReply: (message: ChatMessage) => void;
+  onCopy: (text: string | null | undefined) => void;
+  onLike: (messageId: string) => void;
+  onDelete: (messageId: string) => void;
+  onPin: (messageId: string, isPinned: boolean) => void;
+  onSaveSticker: (stickerId: string) => void;
+  onOpenStickerDetails: (message: ChatMessage) => void;
+  onPollVote: (pollId: string, optionId: string) => void;
+  onUserClick?: ((userId: string) => void) | undefined;
+};
+
+const MessageList = React.memo(function MessageList({
+  messages,
+  currentUserId,
+  canModerate,
+  messageById,
+  messageBackgroundStyle,
+  messagesViewportRef,
+  openActionsId,
+  onToggleActions,
+  onReply,
+  onCopy,
+  onLike,
+  onDelete,
+  onPin,
+  onSaveSticker,
+  onOpenStickerDetails,
+  onPollVote,
+  onUserClick,
+}: MessageListProps) {
+  let previousDay = "";
+
+  return (
+    <div
+      ref={messagesViewportRef}
+      className="room-chat-messages room-wallpaper thin-scrollbar min-h-0 flex-1 overscroll-contain overflow-y-auto scroll-pb-4 p-3 pb-4"
+      style={messageBackgroundStyle}
+    >
+      <div>
+        {messages.map((message, index) => {
+          const day = dayKey(message.createdAt);
+          const showDay = day !== previousDay;
+          const previousMessage = messages[index - 1];
+          const grouped =
+            !showDay &&
+            message.type !== "system" &&
+            Boolean(previousMessage) &&
+            previousMessage?.type !== "system" &&
+            previousMessage?.userId === message.userId &&
+            previousMessage?.type === message.type &&
+            Math.abs(
+              new Date(message.createdAt).getTime() -
+                new Date(previousMessage?.createdAt ?? 0).getTime(),
+            ) <
+              5 * 60 * 1000;
+          previousDay = day;
+
+          return (
+            <React.Fragment key={message.id}>
+              {showDay && <DayDivider value={message.createdAt} />}
+              <MessageBubble
+                message={message}
+                replyToMessage={
+                  message.replyToMessageId
+                    ? (messageById.get(message.replyToMessageId) ?? null)
+                    : null
+                }
+                own={message.userId === currentUserId}
+                grouped={grouped}
+                canModerate={canModerate}
+                actionsOpen={openActionsId === message.id}
+                onToggleActions={() => onToggleActions(message.id)}
+                onReply={() => onReply(message)}
+                onCopy={() => onCopy(message.body)}
+                onLike={() => onLike(message.id)}
+                onDelete={() => onDelete(message.id)}
+                onPin={() => onPin(message.id, !message.isPinned)}
+                onSaveSticker={onSaveSticker}
+                onOpenStickerDetails={() => onOpenStickerDetails(message)}
+                onPollVote={onPollVote}
+                onUserClick={onUserClick}
+              />
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+const MessageBubble = React.memo(function MessageBubble({
   message,
   replyToMessage,
   own,
+  grouped,
   canModerate,
   actionsOpen,
   onToggleActions,
@@ -624,10 +715,12 @@ function MessageBubble({
   onSaveSticker,
   onOpenStickerDetails,
   onPollVote,
+  onUserClick,
 }: {
   message: ChatMessage;
   replyToMessage: ChatMessage | null;
   own: boolean;
+  grouped: boolean;
   canModerate: boolean;
   actionsOpen: boolean;
   onToggleActions: () => void;
@@ -639,6 +732,7 @@ function MessageBubble({
   onSaveSticker: (stickerId: string) => void;
   onOpenStickerDetails: () => void;
   onPollVote: (pollId: string, optionId: string) => void;
+  onUserClick?: ((userId: string) => void) | undefined;
 }) {
   const [dragX, setDragX] = React.useState(0);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -726,8 +820,9 @@ function MessageBubble({
   return (
     <div
       className={cn(
-        "group relative flex items-end gap-2 py-0.5",
-        own ? "justify-end" : "justify-start",
+        "group relative flex items-start gap-2",
+        grouped ? "pt-0.5" : "pt-2",
+        own ? "justify-end pr-2 sm:pr-3" : "justify-start",
       )}
     >
       {isDragging && (
@@ -741,18 +836,32 @@ function MessageBubble({
         </div>
       )}
 
-      {!own && (
-        <Avatar
-          src={message.authorImage}
-          name={message.authorName}
-          className="h-7 w-7 rounded-full"
-        />
-      )}
+      {!own &&
+        (grouped ? (
+          <span className="h-7 w-7 shrink-0" aria-hidden="true" />
+        ) : (
+          <button
+            type="button"
+            className="mt-0.5 shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-50"
+            aria-label={`Ver perfil de ${message.authorName ?? "participante"}`}
+            disabled={!onUserClick || !message.userId}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (message.userId) onUserClick?.(message.userId);
+            }}
+          >
+            <Avatar
+              src={resolveMediaUrl(message.authorImage)}
+              name={message.authorName}
+              className="h-7 w-7 rounded-full"
+            />
+          </button>
+        ))}
 
       <div
         className={cn(
-          "max-w-[min(82%,430px)] touch-pan-y",
-          own ? "ml-12" : "mr-12",
+          "min-w-0 max-w-[min(82%,440px)] touch-pan-y",
+          own ? "ml-9" : "mr-9",
         )}
         style={{
           transform: `translateX(${dragX}px)`,
@@ -765,35 +874,24 @@ function MessageBubble({
       >
         <div
           className={cn(
-            "relative min-w-0 rounded-2xl",
+            "relative min-w-0 flow-root",
             isSticker
               ? "bg-transparent p-0 shadow-none ring-0"
               : [
-                  "shadow-sm ring-1 ring-white/[0.03]",
+                  "rounded-[7.5px] shadow-[0_1px_1px_rgba(0,0,0,0.18)]",
                   message.type === "image" && "p-1",
                   message.type === "audio" && "px-2 py-1",
-                  message.type === "poll" && "px-3 py-2.5",
+                  message.type === "poll" && "px-2 py-1.5",
                   !["audio", "image", "poll"].includes(message.type) &&
-                    "px-3 py-2",
+                    "px-2.5 py-1.5",
                   own
-                    ? "rounded-br-md bg-[#005c4b] text-white"
-                    : "rounded-bl-md bg-[#202c33] text-[#e9edef]",
+                    ? "bg-[#005c4b] text-white"
+                    : "bg-[#202c33] text-[#e9edef]",
                 ],
           )}
         >
-          {!isSticker && (
-            <span
-              className={cn(
-                "absolute bottom-0 h-3 w-3",
-                own
-                  ? "-right-1 bg-[#005c4b] [clip-path:polygon(0_0,100%_100%,0_100%)]"
-                  : "-left-1 bg-[#202c33] [clip-path:polygon(100%_0,100%_100%,0_100%)]",
-              )}
-            />
-          )}
-
-          {!own && (
-            <p className="mb-0.5 truncate text-[12px] font-bold text-primary">
+          {!own && !grouped && (
+            <p className="mb-0.5 truncate pr-5 text-[13px] font-semibold leading-[17px] text-primary">
               {message.authorName ?? "Participante"}
             </p>
           )}
@@ -810,12 +908,13 @@ function MessageBubble({
           )}
 
           {message.type === "text" && (
-            <p className="whitespace-pre-wrap break-words pr-1 text-[14.5px] leading-snug">
-              {message.body}
-            </p>
+            <div className="break-words text-[15px] leading-[20px]">
+              <span className="whitespace-pre-wrap">{message.body}</span>
+              <MessageMeta message={message} own={own} inline />
+            </div>
           )}
           {message.type === "sticker" && message.stickerUrl && (
-            <div className="space-y-1 rounded-xl bg-transparent">
+            <div className="rounded-xl bg-transparent p-0">
               <button
                 type="button"
                 aria-label="Ver detalhes da figurinha"
@@ -829,7 +928,7 @@ function MessageBubble({
                 <img
                   src={resolveMediaUrl(message.stickerUrl)}
                   alt={message.stickerName ?? "Figurinha"}
-                  className="h-28 w-28 rounded-lg object-contain sm:h-32 sm:w-32"
+                  className="max-h-32 max-w-[140px] rounded-lg object-contain"
                 />
               </button>
             </div>
@@ -852,7 +951,7 @@ function MessageBubble({
                 />
               </div>
               {message.body && (
-                <p className="mt-2 whitespace-pre-wrap break-words px-1 text-[14px] leading-snug">
+                <p className="mt-2 whitespace-pre-wrap break-words px-1 text-[15px] leading-[20px]">
                   {message.body}
                 </p>
               )}
@@ -862,20 +961,9 @@ function MessageBubble({
             <PollMessage poll={message.poll} own={own} onVote={onPollVote} />
           )}
 
-          <div
-            className={cn(
-              "mt-1 flex items-center gap-1 text-[11px]",
-              own ? "justify-end text-[#d7f7ee]" : "justify-end text-[#aebac1]",
-            )}
-          >
-            {Boolean(message.likes) && (
-              <span className="mr-1 inline-flex items-center gap-1 rounded-full bg-black/20 px-1.5 py-0.5">
-                <Heart className="h-3 w-3 fill-current" />
-                {message.likes}
-              </span>
-            )}
-            <span>{timeLabel(message.createdAt)}</span>
-          </div>
+          {message.type !== "text" && (
+            <MessageMeta message={message} own={own} sticker={isSticker} />
+          )}
 
           <button
             type="button"
@@ -918,6 +1006,37 @@ function MessageBubble({
         </div>
       </div>
     </div>
+  );
+});
+
+function MessageMeta({
+  message,
+  own,
+  inline = false,
+  sticker = false,
+}: {
+  message: ChatMessage;
+  own: boolean;
+  inline?: boolean;
+  sticker?: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        "items-center gap-1 whitespace-nowrap text-[10.5px] leading-none",
+        inline ? "ml-2 inline-flex translate-y-px" : "float-right ml-3 mt-1 flex h-[14px]",
+        sticker && "rounded bg-black/55 px-1.5 py-1 text-white shadow-sm",
+        own ? "text-[#d7f7ee]" : "text-[#aebac1]",
+      )}
+    >
+      {Boolean(message.likes) && (
+        <span className="inline-flex items-center gap-0.5">
+          <Heart className="h-2.5 w-2.5 fill-current" />
+          {message.likes}
+        </span>
+      )}
+      <span>{timeLabel(message.createdAt)}</span>
+    </span>
   );
 }
 
@@ -1003,7 +1122,7 @@ function StickerDetailsDialog({
               <img
                 src={resolveMediaUrl(message.stickerUrl)}
                 alt={title}
-                className="h-40 w-40 rounded-xl object-contain"
+                className="max-h-44 max-w-[180px] rounded-xl object-contain"
               />
             )}
           </div>
@@ -1187,7 +1306,7 @@ function PollMessage({
           )}
         />
         <div className="min-w-0 flex-1">
-          <p className="whitespace-pre-wrap break-words text-[14.5px] font-semibold leading-snug">
+          <p className="whitespace-pre-wrap break-words text-[15px] font-semibold leading-[20px]">
             {poll.question}
           </p>
           {poll.allowsMultiple && (

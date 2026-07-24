@@ -15,19 +15,19 @@ export function ParticipantsPanel({ participants, canModerate, onPatch }: Props)
   const online = participants.filter((participant) => participant.online);
 
   return (
-    <Card className="h-full">
+    <Card className="h-full min-w-0 overflow-hidden">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center justify-between">
           Participantes
           <Badge>{online.length} online</Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="thin-scrollbar max-h-[430px] space-y-3 overflow-y-auto">
+      <CardContent className="thin-scrollbar max-h-[430px] min-w-0 space-y-3 overflow-x-hidden overflow-y-auto">
         {participants.map((participant) => (
-          <div key={participant.id} className="rounded-lg border border-white/10 bg-white/[0.035] p-3">
+          <div key={participant.id} className="min-w-0 rounded-lg border border-white/10 bg-white/[0.035] p-3">
             <div className="flex items-center gap-3">
               <span className="relative">
-                <Avatar src={participant.image} name={participant.name} />
+                <Avatar src={participant.image} name={participant.name} className="rounded-full" />
                 <span
                   className={`absolute -right-1 -top-1 h-3 w-3 rounded-full border border-background ${
                     participant.online ? "bg-emerald-400" : "bg-muted"
@@ -47,7 +47,7 @@ export function ParticipantsPanel({ participants, canModerate, onPatch }: Props)
             </div>
 
             {canModerate && (
-              <div className="mt-3 grid grid-cols-6 gap-1">
+              <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
                 <Button
                   variant={participant.canWatch ? "outline" : "destructive"}
                   size="icon"

@@ -139,6 +139,33 @@
     display: none;
   }
 
+  @media (min-width: 1024px) {
+    .room-mobile-chat.room-chat-panel {
+      height: auto !important;
+      min-height: 0 !important;
+      flex: 1 1 0 !important;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .room-mobile-chat .room-chat-body {
+      min-height: 0;
+      flex: 1 1 0;
+    }
+
+    .room-mobile-chat .room-chat-messages {
+      min-height: 0;
+      flex: 1 1 0;
+      padding-bottom: 0.75rem;
+    }
+
+    .room-mobile-chat .room-chat-composer {
+      position: static;
+      z-index: auto;
+      flex: 0 0 auto;
+    }
+  }
+
   @media (max-width: 640px) {
     .room-mobile-stack {
       height: calc(var(--room-visual-height, 100dvh) - 3.5rem);

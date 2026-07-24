@@ -25,11 +25,11 @@ export function AppShell() {
   };
 
   return (
-    <div className={cn("app-surface min-h-screen", isRoomRoute && "max-sm:h-[100dvh] max-sm:min-h-0 max-sm:overflow-hidden")}>
+    <div className={cn("app-surface min-h-screen", isRoomRoute && "max-sm:h-[100dvh] max-sm:min-h-0 max-sm:overflow-hidden lg:h-screen lg:min-h-0 lg:overflow-hidden")}>
       <div
         className={cn(
           "mx-auto flex min-h-screen w-full max-w-[1500px] flex-col lg:flex-row",
-          isRoomRoute && "max-sm:h-full max-sm:min-h-0 max-sm:overflow-hidden"
+          isRoomRoute && "max-sm:h-full max-sm:min-h-0 max-sm:overflow-hidden lg:h-full lg:min-h-0 lg:overflow-hidden"
         )}
       >
         <aside className="hidden w-[260px] shrink-0 border-r border-white/10 bg-black/[0.18] px-4 py-5 backdrop-blur-xl lg:block">
@@ -111,7 +111,7 @@ export function AppShell() {
         <main
           className={cn(
             "min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8",
-            isRoomRoute && "max-sm:h-full max-sm:min-h-0 max-sm:overflow-hidden max-sm:p-0"
+            isRoomRoute && "max-sm:h-full max-sm:min-h-0 max-sm:overflow-hidden max-sm:p-0 lg:h-full lg:min-h-0 lg:overflow-hidden lg:p-0"
           )}
         >
           <Outlet />

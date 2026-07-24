@@ -61,12 +61,17 @@ export async function uploadFile(kind: "video" | "image" | "sticker" | "avatar" 
 export function resolveMediaUrl(url: string | null | undefined) {
   if (!url) return "";
 
+  if (url.startsWith("/uploads/")) {
+    return new URL(url, `${API_URL}/`).toString();
+  }
+
   try {
     const parsed = new URL(url);
     const apiUrl = new URL(API_URL);
-    const localHosts = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
 
-    if (localHosts.has(parsed.hostname)) {
+    // Upload URLs may contain a previous local IP. Their path always belongs
+    // to the currently configured API, unlike external media URLs.
+    if (parsed.pathname.startsWith("/uploads/")) {
       parsed.protocol = apiUrl.protocol;
       parsed.hostname = apiUrl.hostname;
       parsed.port = apiUrl.port;
