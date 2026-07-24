@@ -12,7 +12,7 @@ import {
   users,
   videos,
   type Upload,
-  type RoomParticipant
+  type RoomParticipant,
 } from "../database/schema.js";
 import { createId, createRoomSlug, normalizeRoomSlug } from "../utils/id.js";
 import { now } from "../utils/dates.js";
@@ -32,6 +32,7 @@ export type RoomInput = {
   radioEnabled?: boolean | undefined;
   radioUrl?: string | null | undefined;
   isActive?: boolean | undefined;
+  rules?: string | undefined;
 };
 
 export type RoomPatch = {
@@ -46,6 +47,7 @@ export type RoomPatch = {
   radioEnabled?: boolean | undefined;
   radioUrl?: string | null | undefined;
   isActive?: boolean | undefined;
+  rules?: string | undefined;
 };
 
 type UploadCleanupCandidate = Pick<Upload, "id" | "type" | "filename" | "url">;
@@ -53,7 +55,9 @@ type UploadCleanupCandidate = Pick<Upload, "id" | "type" | "filename" | "url">;
 function ensureValidSlug(value: string) {
   const slug = normalizeRoomSlug(value);
   if (slug.length < 3) {
-    throw badRequest("O link personalizado precisa ter pelo menos 3 caracteres");
+    throw badRequest(
+      "O link personalizado precisa ter pelo menos 3 caracteres",
+    );
   }
   return slug;
 }
@@ -61,7 +65,11 @@ function ensureValidSlug(value: string) {
 function createAvailableRoomSlug(base: string) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
-    const existing = db.select({ id: rooms.id }).from(rooms).where(eq(rooms.slug, candidate)).get();
+    const existing = db
+      .select({ id: rooms.id })
+      .from(rooms)
+      .where(eq(rooms.slug, candidate))
+      .get();
     if (!existing) {
       return candidate;
     }
@@ -71,13 +79,21 @@ function createAvailableRoomSlug(base: string) {
 }
 
 function assertSlugAvailable(slug: string, roomId?: string) {
-  const existing = db.select({ id: rooms.id }).from(rooms).where(eq(rooms.slug, slug)).get();
+  const existing = db
+    .select({ id: rooms.id })
+    .from(rooms)
+    .where(eq(rooms.slug, slug))
+    .get();
   if (existing && existing.id !== roomId) {
     throw badRequest("Esse link personalizado ja esta em uso");
   }
 }
 
-function normalizeRadioConfig(type: "rave" | "group", enabled?: boolean, url?: string | null) {
+function normalizeRadioConfig(
+  type: "rave" | "group",
+  enabled?: boolean,
+  url?: string | null,
+) {
   const radioUrl = url?.trim() || null;
   if (type !== "group") {
     return { radioEnabled: false, radioUrl: null };
@@ -87,11 +103,11 @@ function normalizeRadioConfig(type: "rave" | "group", enabled?: boolean, url?: s
   }
   return {
     radioEnabled: Boolean(enabled && radioUrl),
-    radioUrl: radioUrl && enabled !== false ? radioUrl : null
+    radioUrl: radioUrl && enabled !== false ? radioUrl : null,
   };
 }
 
-export function listRooms(includeInactive = false) {
+export function listRooms(includeInactive = false, userId?: string) {
   const where = includeInactive ? undefined : eq(rooms.isActive, true);
   const query = db
     .select({
@@ -105,6 +121,7 @@ export function listRooms(includeInactive = false) {
       radioEnabled: rooms.radioEnabled,
       radioUrl: rooms.radioUrl,
       description: rooms.description,
+      rules: rooms.rules,
       category: rooms.category,
       creatorId: rooms.creatorId,
       creatorName: users.name,
@@ -112,13 +129,36 @@ export function listRooms(includeInactive = false) {
       isActive: rooms.isActive,
       endedAt: rooms.endedAt,
       createdAt: rooms.createdAt,
-      updatedAt: rooms.updatedAt
+      updatedAt: rooms.updatedAt,
     })
     .from(rooms)
     .leftJoin(users, eq(rooms.creatorId, users.id))
     .orderBy(desc(rooms.createdAt));
 
-  return where ? query.where(where).all() : query.all();
+  const rows = where ? query.where(where).all() : query.all();
+  if (!userId || rows.length === 0) {
+    return rows.map((room) => ({ ...room, hasJoined: false }));
+  }
+
+  const joinedRows = db
+    .select({ roomId: roomParticipants.roomId })
+    .from(roomParticipants)
+    .where(
+      and(
+        eq(roomParticipants.userId, userId),
+        inArray(
+          roomParticipants.roomId,
+          rows.map((room) => room.id),
+        ),
+      ),
+    )
+    .all();
+  const joinedRoomIds = new Set(joinedRows.map((row) => row.roomId));
+
+  return rows.map((room) => ({
+    ...room,
+    hasJoined: joinedRoomIds.has(room.id),
+  }));
 }
 
 export function createRoom(input: RoomInput, creatorId: string) {
@@ -134,7 +174,10 @@ export function createRoom(input: RoomInput, creatorId: string) {
     slug = baseSlug;
   } else {
     const readableSlug = normalizeRoomSlug(input.name);
-    const baseSlug = readableSlug.length >= 3 ? readableSlug : `${readableSlug || "sala"}-${createRoomSlug()}`;
+    const baseSlug =
+      readableSlug.length >= 3
+        ? readableSlug
+        : `${readableSlug || "sala"}-${createRoomSlug()}`;
     slug = createAvailableRoomSlug(baseSlug);
   }
 
@@ -153,9 +196,10 @@ export function createRoom(input: RoomInput, creatorId: string) {
       radioEnabled: radio.radioEnabled,
       radioUrl: radio.radioUrl,
       creatorId,
+      rules: input.rules?.trim() ?? "",
       isActive: input.isActive ?? true,
       createdAt: timestamp,
-      updatedAt: timestamp
+      updatedAt: timestamp,
     })
     .returning()
     .get();
@@ -172,7 +216,7 @@ export function createRoom(input: RoomInput, creatorId: string) {
       canModerate: true,
       joinedAt: timestamp,
       lastSeenAt: timestamp,
-      online: false
+      online: false,
     })
     .onConflictDoNothing()
     .run();
@@ -184,7 +228,7 @@ export function createRoom(input: RoomInput, creatorId: string) {
       isPlaying: false,
       positionSeconds: 0,
       updatedAt: timestamp,
-      updatedByUserId: creatorId
+      updatedByUserId: creatorId,
     })
     .onConflictDoNothing()
     .run();
@@ -207,16 +251,22 @@ export function updateRoom(roomId: string, input: RoomPatch) {
   }
   if (input.type !== undefined) patch.type = input.type;
   if (input.description !== undefined) patch.description = input.description;
+  if (input.rules !== undefined) patch.rules = input.rules.trim();
   if (input.category !== undefined) patch.category = input.category;
   if (input.bannerUrl !== undefined) patch.bannerUrl = input.bannerUrl;
   if (input.coverUrl !== undefined) patch.coverUrl = input.coverUrl;
-  if (input.backgroundUrl !== undefined) patch.backgroundUrl = input.backgroundUrl;
-  if (input.type !== undefined || input.radioEnabled !== undefined || input.radioUrl !== undefined) {
+  if (input.backgroundUrl !== undefined)
+    patch.backgroundUrl = input.backgroundUrl;
+  if (
+    input.type !== undefined ||
+    input.radioEnabled !== undefined ||
+    input.radioUrl !== undefined
+  ) {
     const nextType = input.type ?? existing.type;
     const radio = normalizeRadioConfig(
       nextType,
       input.radioEnabled ?? existing.radioEnabled,
-      input.radioUrl !== undefined ? input.radioUrl : existing.radioUrl
+      input.radioUrl !== undefined ? input.radioUrl : existing.radioUrl,
     );
     patch.radioEnabled = radio.radioEnabled;
     patch.radioUrl = radio.radioUrl;
@@ -226,7 +276,12 @@ export function updateRoom(roomId: string, input: RoomPatch) {
     patch.endedAt = input.isActive ? null : now();
   }
 
-  const updated = db.update(rooms).set(patch).where(eq(rooms.id, roomId)).returning().get();
+  const updated = db
+    .update(rooms)
+    .set(patch)
+    .where(eq(rooms.id, roomId))
+    .returning()
+    .get();
   if (!updated) {
     throw notFound("Sala nao encontrada");
   }
@@ -235,7 +290,7 @@ export function updateRoom(roomId: string, input: RoomPatch) {
 
 function addUploadCandidate(
   candidates: Map<string, UploadCleanupCandidate>,
-  upload: UploadCleanupCandidate | null | undefined
+  upload: UploadCleanupCandidate | null | undefined,
 ) {
   if (upload?.id) {
     candidates.set(upload.id, upload);
@@ -246,7 +301,7 @@ function collectRoomCleanupTargets(
   roomId: string,
   bannerUrl?: string | null,
   coverUrl?: string | null,
-  backgroundUrl?: string | null
+  backgroundUrl?: string | null,
 ) {
   const uploadCandidates = new Map<string, UploadCleanupCandidate>();
 
@@ -261,11 +316,11 @@ function collectRoomCleanupTargets(
           id: uploads.id,
           type: uploads.type,
           filename: uploads.filename,
-          url: uploads.url
+          url: uploads.url,
         })
         .from(uploads)
         .where(eq(uploads.url, url))
-        .get()
+        .get(),
     );
   }
 
@@ -275,11 +330,14 @@ function collectRoomCleanupTargets(
       uploadId: uploads.id,
       uploadType: uploads.type,
       uploadFilename: uploads.filename,
-      uploadUrl: uploads.url
+      uploadUrl: uploads.url,
     })
     .from(roomContents)
     .innerJoin(videos, eq(roomContents.videoId, videos.id))
-    .leftJoin(uploads, or(eq(videos.uploadId, uploads.id), eq(videos.sourceUrl, uploads.url)))
+    .leftJoin(
+      uploads,
+      or(eq(videos.uploadId, uploads.id), eq(videos.sourceUrl, uploads.url)),
+    )
     .where(eq(roomContents.roomId, roomId))
     .all();
 
@@ -289,7 +347,7 @@ function collectRoomCleanupTargets(
         id: row.uploadId,
         type: row.uploadType,
         filename: row.uploadFilename,
-        url: row.uploadUrl
+        url: row.uploadUrl,
       });
     }
   }
@@ -300,7 +358,7 @@ function collectRoomCleanupTargets(
       uploadId: uploads.id,
       uploadType: uploads.type,
       uploadFilename: uploads.filename,
-      uploadUrl: uploads.url
+      uploadUrl: uploads.url,
     })
     .from(messages)
     .innerJoin(audios, eq(messages.audioId, audios.id))
@@ -313,7 +371,7 @@ function collectRoomCleanupTargets(
       id: row.uploadId,
       type: row.uploadType,
       filename: row.uploadFilename,
-      url: row.uploadUrl
+      url: row.uploadUrl,
     });
   }
 
@@ -322,7 +380,7 @@ function collectRoomCleanupTargets(
       uploadId: uploads.id,
       uploadType: uploads.type,
       uploadFilename: uploads.filename,
-      uploadUrl: uploads.url
+      uploadUrl: uploads.url,
     })
     .from(messages)
     .innerJoin(uploads, eq(messages.imageUploadId, uploads.id))
@@ -334,14 +392,14 @@ function collectRoomCleanupTargets(
       id: row.uploadId,
       type: row.uploadType,
       filename: row.uploadFilename,
-      url: row.uploadUrl
+      url: row.uploadUrl,
     });
   }
 
   return {
     videoIds: [...new Set(roomVideos.map((row) => row.videoId))],
     audioIds: [...new Set(roomAudios.map((row) => row.audioId))],
-    uploadCandidates: [...uploadCandidates.values()]
+    uploadCandidates: [...uploadCandidates.values()],
   };
 }
 
@@ -410,7 +468,12 @@ export function deleteRoom(roomId: string) {
     throw notFound("Sala nao encontrada");
   }
 
-  const targets = collectRoomCleanupTargets(room.id, room.bannerUrl, room.coverUrl, room.backgroundUrl);
+  const targets = collectRoomCleanupTargets(
+    room.id,
+    room.bannerUrl,
+    room.coverUrl,
+    room.backgroundUrl,
+  );
 
   db.transaction((tx) => {
     if (targets.audioIds.length > 0) {
@@ -421,23 +484,34 @@ export function deleteRoom(roomId: string) {
       tx.delete(videos).where(inArray(videos.id, targets.videoIds)).run();
     }
 
-    const deleted = tx.delete(rooms).where(eq(rooms.id, roomId)).returning({ id: rooms.id }).get();
+    const deleted = tx
+      .delete(rooms)
+      .where(eq(rooms.id, roomId))
+      .returning({ id: rooms.id })
+      .get();
     if (!deleted) {
       throw notFound("Sala nao encontrada");
     }
   });
 
-  const unusedUploads = targets.uploadCandidates.filter((upload) => !uploadStillReferenced(upload));
+  const unusedUploads = targets.uploadCandidates.filter(
+    (upload) => !uploadStillReferenced(upload),
+  );
   const deletedUploads =
     unusedUploads.length > 0
       ? db
           .delete(uploads)
-          .where(inArray(uploads.id, unusedUploads.map((upload) => upload.id)))
+          .where(
+            inArray(
+              uploads.id,
+              unusedUploads.map((upload) => upload.id),
+            ),
+          )
           .returning({
             id: uploads.id,
             type: uploads.type,
             filename: uploads.filename,
-            url: uploads.url
+            url: uploads.url,
           })
           .all()
       : [];
@@ -460,6 +534,7 @@ export function getRoomBySlug(slug: string, userId: string) {
       radioEnabled: rooms.radioEnabled,
       radioUrl: rooms.radioUrl,
       description: rooms.description,
+      rules: rooms.rules,
       category: rooms.category,
       creatorId: rooms.creatorId,
       creatorName: users.name,
@@ -467,7 +542,7 @@ export function getRoomBySlug(slug: string, userId: string) {
       isActive: rooms.isActive,
       endedAt: rooms.endedAt,
       createdAt: rooms.createdAt,
-      updatedAt: rooms.updatedAt
+      updatedAt: rooms.updatedAt,
     })
     .from(rooms)
     .leftJoin(users, eq(rooms.creatorId, users.id))
@@ -479,27 +554,58 @@ export function getRoomBySlug(slug: string, userId: string) {
   }
 
   const globalUser = db.select().from(users).where(eq(users.id, userId)).get();
-  if (!room.isActive && globalUser?.role !== "admin" && room.creatorId !== userId) {
+  if (
+    !room.isActive &&
+    globalUser?.role !== "admin" &&
+    room.creatorId !== userId
+  ) {
     throw forbidden("Esta sala foi encerrada");
   }
 
-  const participant = joinRoom(room.id, userId, room.creatorId === userId || globalUser?.role === "admin");
-  if (participant.isBanned) {
+  const participant = getExistingRoomParticipant(room.id, userId);
+  if (participant?.isBanned) {
     throw forbidden(participant.bannedReason ?? "Voce foi banido desta sala");
   }
-  if (!participant.canWatch) {
+  if (participant && !participant.canWatch) {
     throw forbidden("Voce nao tem permissao para assistir esta sala");
   }
 
   return { room, participant };
 }
 
-export function joinRoom(roomId: string, userId: string, moderator = false): RoomParticipant {
+export function getExistingRoomParticipant(
+  roomId: string,
+  userId: string,
+): RoomParticipant | null {
+  return (
+    db
+      .select()
+      .from(roomParticipants)
+      .where(
+        and(
+          eq(roomParticipants.roomId, roomId),
+          eq(roomParticipants.userId, userId),
+        ),
+      )
+      .get() ?? null
+  );
+}
+
+export function joinRoom(
+  roomId: string,
+  userId: string,
+  moderator = false,
+): RoomParticipant {
   const timestamp = now();
   const existing = db
     .select()
     .from(roomParticipants)
-    .where(and(eq(roomParticipants.roomId, roomId), eq(roomParticipants.userId, userId)))
+    .where(
+      and(
+        eq(roomParticipants.roomId, roomId),
+        eq(roomParticipants.userId, userId),
+      ),
+    )
     .get();
 
   if (existing) {
@@ -509,7 +615,7 @@ export function joinRoom(roomId: string, userId: string, moderator = false): Roo
         online: true,
         lastSeenAt: timestamp,
         role: moderator ? "administrator" : existing.role,
-        canModerate: moderator ? true : existing.canModerate
+        canModerate: moderator ? true : existing.canModerate,
       })
       .where(eq(roomParticipants.id, existing.id))
       .returning()
@@ -529,7 +635,7 @@ export function joinRoom(roomId: string, userId: string, moderator = false): Roo
       canModerate: moderator,
       joinedAt: timestamp,
       lastSeenAt: timestamp,
-      online: true
+      online: true,
     })
     .returning()
     .get();
@@ -538,7 +644,12 @@ export function joinRoom(roomId: string, userId: string, moderator = false): Roo
 export function leaveRoom(roomId: string, userId: string) {
   db.update(roomParticipants)
     .set({ online: false, lastSeenAt: now() })
-    .where(and(eq(roomParticipants.roomId, roomId), eq(roomParticipants.userId, userId)))
+    .where(
+      and(
+        eq(roomParticipants.roomId, roomId),
+        eq(roomParticipants.userId, userId),
+      ),
+    )
     .run();
 }
 
@@ -562,7 +673,7 @@ export function listParticipants(roomId: string) {
       name: users.name,
       email: users.email,
       image: users.image,
-      globalRole: users.role
+      globalRole: users.role,
     })
     .from(roomParticipants)
     .leftJoin(users, eq(roomParticipants.userId, users.id))
@@ -584,13 +695,18 @@ export function updateParticipantPermissions(
     isMuted?: boolean | undefined;
     isBanned?: boolean | undefined;
     bannedReason?: string | null | undefined;
-  }
+  },
 ) {
   assertRoomModerator(roomId, actorId);
   const participant = db
     .select()
     .from(roomParticipants)
-    .where(and(eq(roomParticipants.id, participantId), eq(roomParticipants.roomId, roomId)))
+    .where(
+      and(
+        eq(roomParticipants.id, participantId),
+        eq(roomParticipants.roomId, roomId),
+      ),
+    )
     .get();
   if (!participant) {
     throw notFound("Participante nao encontrado");

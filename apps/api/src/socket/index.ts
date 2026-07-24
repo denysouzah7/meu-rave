@@ -5,15 +5,16 @@ import { auth } from "../auth/auth.js";
 import { getUserById, ensureFirstAdmin } from "../services/user.service.js";
 import {
   getRoomBySlug,
+  joinRoom,
   leaveRoom,
   listParticipants,
-  updateParticipantPermissions
+  updateParticipantPermissions,
 } from "../services/room.service.js";
 import {
   getPlaybackState,
   listRoomContents,
   setActiveContent,
-  updatePlayback
+  updatePlayback,
 } from "../services/content.service.js";
 import {
   countRoomMessages,
@@ -26,12 +27,12 @@ import {
   softDeleteMessage,
   toggleMessageLike,
   userCanDeleteMessage,
-  votePoll
+  votePoll,
 } from "../services/message.service.js";
 import {
   assertCanChat,
   assertCanSendAudio,
-  assertRoomModerator
+  assertRoomModerator,
 } from "../services/permission.service.js";
 import { getMessageRetentionDays } from "../services/settings.service.js";
 import { forbidden } from "../utils/http.js";
@@ -46,7 +47,9 @@ type AuthedSocket = Socket & {
 const channel = (roomId: string) => `room:${roomId}`;
 
 function emitParticipants(io: Server, roomId: string) {
-  io.to(channel(roomId)).emit("participants:update", { participants: listParticipants(roomId) });
+  io.to(channel(roomId)).emit("participants:update", {
+    participants: listParticipants(roomId),
+  });
 }
 
 function socketError(socket: Socket, error: unknown) {
@@ -57,7 +60,7 @@ function socketError(socket: Socket, error: unknown) {
 async function authorizeSocket(socket: Socket, next: (error?: Error) => void) {
   try {
     const session = await auth.api.getSession({
-      headers: fromNodeHeaders(socket.request.headers as IncomingHttpHeaders)
+      headers: fromNodeHeaders(socket.request.headers as IncomingHttpHeaders),
     });
 
     if (!session) {
@@ -85,7 +88,19 @@ export function registerSocket(io: Server) {
   io.on("connection", (socket: AuthedSocket) => {
     socket.on("room:join", (payload: { slug: string }) => {
       try {
-        const { room, participant } = getRoomBySlug(payload.slug, socket.data.userId);
+        const { room, participant: existingParticipant } = getRoomBySlug(
+          payload.slug,
+          socket.data.userId,
+        );
+        if (!existingParticipant) {
+          throw forbidden("Entre na sala para liberar o chat");
+        }
+        const participant = joinRoom(
+          room.id,
+          socket.data.userId,
+          room.creatorId === socket.data.userId ||
+            existingParticipant.canModerate,
+        );
         socket.data.roomId = room.id;
         socket.join(channel(room.id));
 
@@ -100,7 +115,7 @@ export function registerSocket(io: Server) {
           pinnedMessages: listPinnedMessages(room.id),
           messageCount: countRoomMessages(room.id),
           messageRanking: listRoomMessageRanking(room.id),
-          messageRetentionDays: getMessageRetentionDays()
+          messageRetentionDays: getMessageRetentionDays(),
         });
         emitParticipants(io, room.id);
       } catch (error) {
@@ -151,7 +166,7 @@ export function registerSocket(io: Server) {
             const audio = createAudioFromUpload(
               payload.audioUploadId,
               socket.data.userId,
-              payload.audioDurationSeconds ?? 0
+              payload.audioDurationSeconds ?? 0,
             );
             audioId = audio.id;
           }
@@ -165,17 +180,17 @@ export function registerSocket(io: Server) {
             stickerId: payload.stickerId,
             audioId,
             imageUploadId: payload.imageUploadId,
-            poll: payload.poll
+            poll: payload.poll,
           });
           io.to(channel(roomId)).emit("chat:message", {
             message,
             messageCount: countRoomMessages(roomId),
-            messageRanking: listRoomMessageRanking(roomId)
+            messageRanking: listRoomMessageRanking(roomId),
           });
         } catch (error) {
           socketError(socket, error);
         }
-      }
+      },
     );
 
     socket.on("poll:vote", (payload: { pollId: string; optionId: string }) => {
@@ -185,7 +200,12 @@ export function registerSocket(io: Server) {
           throw forbidden("Entre em uma sala primeiro");
         }
         assertCanChat(roomId, socket.data.userId);
-        const poll = votePoll(roomId, payload.pollId, payload.optionId, socket.data.userId);
+        const poll = votePoll(
+          roomId,
+          payload.pollId,
+          payload.optionId,
+          socket.data.userId,
+        );
         io.to(channel(roomId)).emit("poll:update", { poll });
       } catch (error) {
         socketError(socket, error);
@@ -205,7 +225,10 @@ export function registerSocket(io: Server) {
 
     socket.on("chat:delete", (payload: { messageId: string }) => {
       try {
-        const permission = userCanDeleteMessage(payload.messageId, socket.data.userId);
+        const permission = userCanDeleteMessage(
+          payload.messageId,
+          socket.data.userId,
+        );
         if (!permission.ok) {
           assertRoomModerator(permission.roomId, socket.data.userId);
         }
@@ -213,23 +236,7 @@ export function registerSocket(io: Server) {
         io.to(channel(deleted.roomId)).emit("chat:delete", {
           messageId: deleted.id,
           messageCount: countRoomMessages(deleted.roomId),
-          messageRanking: listRoomMessageRanking(deleted.roomId)
-        });
-      } catch (error) {
-        socketError(socket, error);
-      }
-    });
-
-    socket.on("chat:pin", (payload: { messageId: string; isPinned: boolean }) => {
-      try {
-        if (!socket.data.roomId) {
-          throw forbidden("Entre em uma sala primeiro");
-        }
-        assertRoomModerator(socket.data.roomId, socket.data.userId);
-        const updated = pinMessage(payload.messageId, payload.isPinned);
-        io.to(channel(socket.data.roomId)).emit("chat:pin", {
-          messageId: updated.id,
-          isPinned: updated.isPinned
+          messageRanking: listRoomMessageRanking(deleted.roomId),
         });
       } catch (error) {
         socketError(socket, error);
@@ -237,18 +244,47 @@ export function registerSocket(io: Server) {
     });
 
     socket.on(
-      "player:update",
-      (payload: { contentId?: string | null; isPlaying: boolean; positionSeconds: number }) => {
+      "chat:pin",
+      (payload: { messageId: string; isPinned: boolean }) => {
         try {
           if (!socket.data.roomId) {
             throw forbidden("Entre em uma sala primeiro");
           }
-          const playback = updatePlayback(socket.data.roomId, socket.data.userId, payload);
-          io.to(channel(socket.data.roomId)).emit("player:update", { playback });
+          assertRoomModerator(socket.data.roomId, socket.data.userId);
+          const updated = pinMessage(payload.messageId, payload.isPinned);
+          io.to(channel(socket.data.roomId)).emit("chat:pin", {
+            messageId: updated.id,
+            isPinned: updated.isPinned,
+          });
         } catch (error) {
           socketError(socket, error);
         }
-      }
+      },
+    );
+
+    socket.on(
+      "player:update",
+      (payload: {
+        contentId?: string | null;
+        isPlaying: boolean;
+        positionSeconds: number;
+      }) => {
+        try {
+          if (!socket.data.roomId) {
+            throw forbidden("Entre em uma sala primeiro");
+          }
+          const playback = updatePlayback(
+            socket.data.roomId,
+            socket.data.userId,
+            payload,
+          );
+          io.to(channel(socket.data.roomId)).emit("player:update", {
+            playback,
+          });
+        } catch (error) {
+          socketError(socket, error);
+        }
+      },
     );
 
     socket.on("content:activate", (payload: { contentId: string }) => {
@@ -256,29 +292,36 @@ export function registerSocket(io: Server) {
         if (!socket.data.roomId) {
           throw forbidden("Entre em uma sala primeiro");
         }
-        const playback = setActiveContent(socket.data.roomId, payload.contentId, socket.data.userId);
+        const playback = setActiveContent(
+          socket.data.roomId,
+          payload.contentId,
+          socket.data.userId,
+        );
         io.to(channel(socket.data.roomId)).emit("player:update", { playback });
       } catch (error) {
         socketError(socket, error);
       }
     });
 
-    socket.on("participant:update", (payload: { participantId: string; patch: Record<string, unknown> }) => {
-      try {
-        if (!socket.data.roomId) {
-          throw forbidden("Entre em uma sala primeiro");
+    socket.on(
+      "participant:update",
+      (payload: { participantId: string; patch: Record<string, unknown> }) => {
+        try {
+          if (!socket.data.roomId) {
+            throw forbidden("Entre em uma sala primeiro");
+          }
+          updateParticipantPermissions(
+            socket.data.roomId,
+            payload.participantId,
+            socket.data.userId,
+            payload.patch,
+          );
+          emitParticipants(io, socket.data.roomId);
+        } catch (error) {
+          socketError(socket, error);
         }
-        updateParticipantPermissions(
-          socket.data.roomId,
-          payload.participantId,
-          socket.data.userId,
-          payload.patch
-        );
-        emitParticipants(io, socket.data.roomId);
-      } catch (error) {
-        socketError(socket, error);
-      }
-    });
+      },
+    );
 
     socket.on("disconnect", () => {
       if (!socket.data.roomId) {

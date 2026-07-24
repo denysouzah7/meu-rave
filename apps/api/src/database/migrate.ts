@@ -85,6 +85,7 @@ export function migrate() {
       "radioEnabled" INTEGER NOT NULL DEFAULT 0,
       "radioUrl" TEXT,
       "description" TEXT NOT NULL,
+      "rules" TEXT NOT NULL DEFAULT '',
       "category" TEXT NOT NULL,
       "creatorId" TEXT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
       "isActive" INTEGER NOT NULL DEFAULT 1,
@@ -269,7 +270,9 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS "notifications_user_read_idx" ON "notifications" ("userId", "readAt");
   `);
 
-  const roomColumns = sqlite.prepare("PRAGMA table_info(rooms)").all() as Array<{ name: string }>;
+  const roomColumns = sqlite
+    .prepare("PRAGMA table_info(rooms)")
+    .all() as Array<{ name: string }>;
   if (!roomColumns.some((column) => column.name === "type")) {
     sqlite.exec(`
       ALTER TABLE "rooms" ADD COLUMN "type" TEXT NOT NULL DEFAULT 'rave';
@@ -295,14 +298,27 @@ export function migrate() {
       ALTER TABLE "rooms" ADD COLUMN "radioUrl" TEXT;
     `);
   }
-  sqlite.exec(`CREATE INDEX IF NOT EXISTS "rooms_type_idx" ON "rooms" ("type");`);
+  if (!roomColumns.some((column) => column.name === "rules")) {
+    sqlite.exec(`
+      ALTER TABLE "rooms" ADD COLUMN "rules" TEXT NOT NULL DEFAULT '';
+    `);
+  }
+  sqlite.exec(
+    `CREATE INDEX IF NOT EXISTS "rooms_type_idx" ON "rooms" ("type");`,
+  );
 
-  const stickerColumns = sqlite.prepare("PRAGMA table_info(stickers)").all() as Array<{ name: string }>;
+  const stickerColumns = sqlite
+    .prepare("PRAGMA table_info(stickers)")
+    .all() as Array<{ name: string }>;
   if (!stickerColumns.some((column) => column.name === "originalCreatorId")) {
-    sqlite.exec(`ALTER TABLE "stickers" ADD COLUMN "originalCreatorId" TEXT REFERENCES "user"("id") ON DELETE SET NULL;`);
+    sqlite.exec(
+      `ALTER TABLE "stickers" ADD COLUMN "originalCreatorId" TEXT REFERENCES "user"("id") ON DELETE SET NULL;`,
+    );
   }
   if (!stickerColumns.some((column) => column.name === "originalCreatedAt")) {
-    sqlite.exec(`ALTER TABLE "stickers" ADD COLUMN "originalCreatedAt" INTEGER;`);
+    sqlite.exec(
+      `ALTER TABLE "stickers" ADD COLUMN "originalCreatedAt" INTEGER;`,
+    );
   }
   if (!stickerColumns.some((column) => column.name === "sourceStickerId")) {
     sqlite.exec(`ALTER TABLE "stickers" ADD COLUMN "sourceStickerId" TEXT;`);
@@ -322,7 +338,9 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS "stickers_source_idx" ON "stickers" ("sourceStickerId");
   `);
 
-  const messageColumns = sqlite.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
+  const messageColumns = sqlite
+    .prepare("PRAGMA table_info(messages)")
+    .all() as Array<{ name: string }>;
   if (!messageColumns.some((column) => column.name === "imageUploadId")) {
     sqlite.exec(`
       ALTER TABLE "messages" ADD COLUMN "imageUploadId" TEXT REFERENCES "uploads"("id") ON DELETE SET NULL;
@@ -338,10 +356,16 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS "messages_poll_idx" ON "messages" ("pollId");
   `);
 
-  const existing = sqlite.prepare("SELECT value FROM settings WHERE key = ?").get("messageRetentionDays");
+  const existing = sqlite
+    .prepare("SELECT value FROM settings WHERE key = ?")
+    .get("messageRetentionDays");
   if (!existing) {
     sqlite
       .prepare("INSERT INTO settings (key, value, updatedAt) VALUES (?, ?, ?)")
-      .run("messageRetentionDays", String(env.DEFAULT_MESSAGE_RETENTION_DAYS), now().getTime());
+      .run(
+        "messageRetentionDays",
+        String(env.DEFAULT_MESSAGE_RETENTION_DAYS),
+        now().getTime(),
+      );
   }
 }

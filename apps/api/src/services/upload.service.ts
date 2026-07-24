@@ -17,7 +17,7 @@ const allowedMime: Record<UploadKind, RegExp> = {
   image: /^image\//,
   sticker: /^image\//,
   avatar: /^image\//,
-  audio: /^audio\//
+  audio: /^audio\//,
 };
 
 function safeExtension(filename: string, mimeType: string) {
@@ -26,14 +26,20 @@ function safeExtension(filename: string, mimeType: string) {
     return ext.replace(/[^a-z0-9.]/g, "");
   }
   if (mimeType.includes("webm")) return ".webm";
+  if (mimeType.includes("ogg")) return ".ogg";
+  if (mimeType.includes("wav")) return ".wav";
   if (mimeType.includes("mpeg")) return ".mp3";
+  if (mimeType.includes("mp4")) return ".mp4";
   if (mimeType.includes("png")) return ".png";
   if (mimeType.includes("jpeg")) return ".jpg";
-  if (mimeType.includes("mp4")) return ".mp4";
   return ".bin";
 }
 
-export async function saveUpload(file: MultipartFile, userId: string, type: UploadKind): Promise<Upload> {
+export async function saveUpload(
+  file: MultipartFile,
+  userId: string,
+  type: UploadKind,
+): Promise<Upload> {
   if (!allowedMime[type].test(file.mimetype)) {
     throw badRequest(`Arquivo invalido para ${type}`);
   }
@@ -64,7 +70,7 @@ export async function saveUpload(file: MultipartFile, userId: string, type: Uplo
       mimeType: file.mimetype,
       size,
       url,
-      createdAt: now()
+      createdAt: now(),
     })
     .returning()
     .all();

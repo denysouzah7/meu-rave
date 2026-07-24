@@ -22,11 +22,13 @@ export type Room = {
   radioEnabled: boolean;
   radioUrl?: string | null;
   description: string;
+  rules: string;
   category: string;
   creatorId: string;
   creatorName?: string | null;
   creatorImage?: string | null;
   isActive: boolean;
+  hasJoined?: boolean;
   endedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -160,7 +162,7 @@ export type RoomMessageRankingItem = {
 
 export type RoomPayload = {
   room: Room;
-  participant: Participant;
+  participant: Participant | null;
   contents: RoomContent[];
   playback: PlaybackState;
   participants: Participant[];

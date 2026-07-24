@@ -6,6 +6,7 @@ import {
   Copy,
   Heart,
   ImagePlus,
+  Info,
   Loader2,
   Mic,
   Paperclip,
@@ -17,10 +18,15 @@ import {
   Send,
   Smile,
   Trash2,
-  X
+  X,
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ChatMessage, Participant, Sticker, StickerPack } from "@/services/types";
+import type {
+  ChatMessage,
+  Participant,
+  Sticker,
+  StickerPack,
+} from "@/services/types";
 import { api, resolveMediaUrl, uploadFile } from "@/services/api";
 import { useStickerPacks } from "@/hooks/useApi";
 import { Avatar } from "@/components/ui/avatar";
@@ -33,6 +39,57 @@ import { cn, formatDuration } from "@/lib/utils";
 import { createMediaBackgroundStyle } from "@/lib/media";
 
 const MAX_AUDIO_DURATION_SECONDS = 120;
+const AUDIO_MIME_CANDIDATES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+  "audio/ogg;codecs=opus",
+  "audio/ogg",
+];
+const AUTHOR_COLORS = [
+  "#f59e0b",
+  "#38bdf8",
+  "#a78bfa",
+  "#34d399",
+  "#fb7185",
+  "#f472b6",
+  "#60a5fa",
+];
+
+function getSupportedAudioMimeType() {
+  if (
+    typeof MediaRecorder === "undefined" ||
+    typeof MediaRecorder.isTypeSupported !== "function"
+  ) {
+    return "";
+  }
+
+  return (
+    AUDIO_MIME_CANDIDATES.find((type) => MediaRecorder.isTypeSupported(type)) ??
+    ""
+  );
+}
+
+function audioExtensionFromMimeType(mimeType: string) {
+  if (mimeType.includes("ogg")) return ".ogg";
+  if (mimeType.includes("mp4")) return ".mp4";
+  if (mimeType.includes("mpeg")) return ".mp3";
+  if (mimeType.includes("wav")) return ".wav";
+  return ".webm";
+}
+
+function audioRecorderErrorMessage(error: unknown) {
+  if (error instanceof DOMException) {
+    if (error.name === "NotAllowedError" || error.name === "SecurityError") {
+      return "Permita o microfone no navegador. No Android, a gravacao exige HTTPS quando acessa pelo IP.";
+    }
+    if (error.name === "NotFoundError") {
+      return "Nenhum microfone foi encontrado neste dispositivo.";
+    }
+  }
+
+  return "Nao foi possivel iniciar a gravacao de audio neste dispositivo.";
+}
 
 type Props = {
   roomName: string;
@@ -52,11 +109,14 @@ type Props = {
     audioUploadId?: string | null | undefined;
     audioDurationSeconds?: number | undefined;
     imageUploadId?: string | null | undefined;
-    poll?: {
-      question: string;
-      options: string[];
-      allowsMultiple?: boolean | undefined;
-    } | null | undefined;
+    poll?:
+      | {
+          question: string;
+          options: string[];
+          allowsMultiple?: boolean | undefined;
+        }
+      | null
+      | undefined;
   }) => void;
   onPollVote: (pollId: string, optionId: string) => void;
   onLike: (messageId: string) => void;
@@ -78,7 +138,7 @@ export function ChatPanel({
   onPollVote,
   onLike,
   onDelete,
-  onPin
+  onPin,
 }: Props) {
   const [body, setBody] = React.useState("");
   const [replyTo, setReplyTo] = React.useState<ChatMessage | null>(null);
@@ -88,32 +148,47 @@ export function ChatPanel({
   const [showPollComposer, setShowPollComposer] = React.useState(false);
   const [uploadingImage, setUploadingImage] = React.useState(false);
   const [composerError, setComposerError] = React.useState("");
+  const [selectedStickerMessage, setSelectedStickerMessage] =
+    React.useState<ChatMessage | null>(null);
   const messagesViewportRef = React.useRef<HTMLDivElement | null>(null);
   const messageBoxRef = React.useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = React.useRef<HTMLInputElement | null>(null);
   const touchSendHandledRef = React.useRef(false);
-  const messageById = React.useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages]);
+  const messageById = React.useMemo(
+    () => new Map(messages.map((message) => [message.id, message])),
+    [messages],
+  );
   const messageBackgroundStyle = React.useMemo(
     () => createMediaBackgroundStyle(backgroundUrl, 0.74),
-    [backgroundUrl]
+    [backgroundUrl],
   );
   const queryClient = useQueryClient();
   const saveSticker = useMutation({
-    mutationFn: (stickerId: string) => api<{ sticker: Sticker }>(`/stickers/${stickerId}/save`, { method: "POST" }),
+    mutationFn: (stickerId: string) =>
+      api<{ sticker: Sticker }>(`/stickers/${stickerId}/save`, {
+        method: "POST",
+      }),
     onSuccess: async () => {
       setComposerError("");
       await queryClient.invalidateQueries({ queryKey: ["stickers", "packs"] });
     },
     onError: (error) => {
-      setComposerError(error instanceof Error ? error.message : "Nao foi possivel salvar a figurinha.");
-    }
+      setComposerError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel salvar a figurinha.",
+      );
+    },
   });
 
-  const scrollMessagesToBottom = React.useCallback((behavior: ScrollBehavior = "auto") => {
-    const viewport = messagesViewportRef.current;
-    if (!viewport) return;
-    viewport.scrollTo({ top: viewport.scrollHeight, behavior });
-  }, []);
+  const scrollMessagesToBottom = React.useCallback(
+    (behavior: ScrollBehavior = "auto") => {
+      const viewport = messagesViewportRef.current;
+      if (!viewport) return;
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior });
+    },
+    [],
+  );
 
   React.useEffect(() => {
     scrollMessagesToBottom("smooth");
@@ -132,14 +207,16 @@ export function ChatPanel({
     return () => document.removeEventListener("pointerdown", closeActions);
   }, []);
 
-  const canChat = Boolean(participant?.canChat && !participant.isMuted && !participant.isBanned);
+  const canChat = Boolean(
+    participant?.canChat && !participant.isMuted && !participant.isBanned,
+  );
 
   const submit = React.useCallback(() => {
     if (!body.trim() || !canChat) return;
     onSend({
       type: "text",
       body: body.trim(),
-      replyToMessageId: replyTo?.id
+      replyToMessageId: replyTo?.id,
     });
     setBody("");
     setReplyTo(null);
@@ -166,12 +243,16 @@ export function ChatPanel({
         type: "image",
         imageUploadId: result.upload.id,
         body: body.trim() || undefined,
-        replyToMessageId: replyTo?.id
+        replyToMessageId: replyTo?.id,
       });
       setBody("");
       setReplyTo(null);
     } catch (error) {
-      setComposerError(error instanceof Error ? error.message : "Nao foi possivel enviar a imagem.");
+      setComposerError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel enviar a imagem.",
+      );
     } finally {
       setUploadingImage(false);
     }
@@ -183,7 +264,7 @@ export function ChatPanel({
     <Card
       className={cn(
         "room-chat-panel room-panel-texture flex h-[min(760px,calc(100vh-96px))] min-h-[360px] flex-col overflow-hidden border-white/10 shadow-2xl max-sm:h-[min(520px,56svh)] max-sm:min-h-[320px]",
-        className
+        className,
       )}
     >
       <div className="room-chat-header flex h-16 shrink-0 items-center gap-3 border-b border-white/10 bg-[#111b21] px-3">
@@ -193,15 +274,25 @@ export function ChatPanel({
           onClick={onOpenRoomInfo}
         >
           <span className="relative shrink-0">
-            <Avatar name={roomName} className="h-11 w-11 rounded-full border-primary/30 bg-primary/[0.16]" />
+            <Avatar
+              name={roomName}
+              className="h-11 w-11 rounded-full border-primary/30 bg-primary/[0.16]"
+            />
             <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#111b21] bg-emerald-400" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-bold text-white">{roomName}</span>
-            <span className="block truncate text-xs text-[#aebac1]">{onlineCount} online</span>
+            <span className="block truncate text-sm font-bold text-white">
+              {roomName}
+            </span>
+            <span className="block truncate text-xs text-[#aebac1]">
+              {onlineCount} online
+            </span>
           </span>
         </button>
-        <Badge variant={canChat ? "default" : "destructive"} className="rounded-full">
+        <Badge
+          variant={canChat ? "default" : "destructive"}
+          className="rounded-full"
+        >
           {canChat ? "chat" : "restrito"}
         </Badge>
       </div>
@@ -224,13 +315,17 @@ export function ChatPanel({
                   <MessageBubble
                     message={message}
                     replyToMessage={
-                      message.replyToMessageId ? messageById.get(message.replyToMessageId) ?? null : null
+                      message.replyToMessageId
+                        ? (messageById.get(message.replyToMessageId) ?? null)
+                        : null
                     }
                     own={message.userId === currentUserId}
                     canModerate={canModerate}
                     actionsOpen={openActionsId === message.id}
                     onToggleActions={() =>
-                      setOpenActionsId((current) => (current === message.id ? null : message.id))
+                      setOpenActionsId((current) =>
+                        current === message.id ? null : message.id,
+                      )
                     }
                     onReply={() => {
                       setReplyTo(message);
@@ -258,6 +353,9 @@ export function ChatPanel({
                       saveSticker.mutate(stickerId);
                       setOpenActionsId(null);
                     }}
+                    onOpenStickerDetails={() =>
+                      setSelectedStickerMessage(message)
+                    }
                     onPollVote={onPollVote}
                   />
                 </React.Fragment>
@@ -266,15 +364,25 @@ export function ChatPanel({
           </div>
         </div>
 
-        <div className="room-chat-composer sticky bottom-0 z-30 shrink-0 border-t border-white/10 bg-[#0b141a]/98 shadow-[0_-12px_24px_rgba(0,0,0,0.22)] backdrop-blur max-sm:static">
+        <div className="room-chat-composer sticky bottom-0 z-30 shrink-0 bg-[#0b141a]/98 shadow-[0_-10px_22px_rgba(0,0,0,0.20)] backdrop-blur max-sm:static">
           {replyTo && (
-            <div className="px-3 pt-2">
-              <div className="flex items-center gap-2 rounded-lg border-l-4 border-primary bg-white/[0.06] px-3 py-2">
+            <div className="px-2.5 pt-2">
+              <div className="flex items-center gap-2 rounded-xl border-l-4 border-primary bg-[#202c33] px-3 py-2 shadow-sm">
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold text-primary">{replyTo.authorName ?? "Mensagem"}</p>
-                  <p className="truncate text-xs text-[#aebac1]">{replyPreview(replyTo)}</p>
+                  <p className="text-xs font-bold text-primary">
+                    {replyTo.authorName ?? "Mensagem"}
+                  </p>
+                  <p className="truncate text-xs text-[#aebac1]">
+                    {replyPreview(replyTo)}
+                  </p>
                 </div>
-                <Button size="icon" variant="ghost" aria-label="Cancelar resposta" onClick={() => setReplyTo(null)}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Cancelar resposta"
+                  className="h-8 w-8 rounded-full"
+                  onClick={() => setReplyTo(null)}
+                >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
@@ -285,7 +393,11 @@ export function ChatPanel({
             <StickerTray
               onClose={() => setShowStickers(false)}
               onPick={(sticker) => {
-                onSend({ type: "sticker", stickerId: sticker.id, replyToMessageId: replyTo?.id });
+                onSend({
+                  type: "sticker",
+                  stickerId: sticker.id,
+                  replyToMessageId: replyTo?.id,
+                });
                 setReplyTo(null);
                 setShowStickers(false);
                 setShowAttachments(false);
@@ -314,79 +426,30 @@ export function ChatPanel({
           )}
 
           <div className="p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
-            <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" onChange={sendImage} />
-            <div className="flex items-end gap-2">
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                aria-label="Figurinhas"
-                className="h-11 w-11 shrink-0 rounded-full text-[#aebac1]"
-                onClick={() => {
-                  setComposerError("");
-                  setShowAttachments(false);
-                  setShowPollComposer(false);
-                  setShowStickers((value) => !value);
-                }}
-              >
-                <Smile className="h-5 w-5" />
-              </Button>
-              <div className="relative shrink-0">
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={sendImage}
+            />
+            <div className="flex items-end gap-1.5">
+              <div className="flex min-w-0 flex-1 items-end rounded-[26px] bg-[#202c33] px-1.5 py-1 shadow-sm">
                 <Button
                   type="button"
                   size="icon"
-                  variant={showAttachments || showPollComposer ? "secondary" : "ghost"}
-                  aria-label="Anexos"
-                  aria-expanded={showAttachments}
-                  disabled={!canChat || uploadingImage}
-                  className="h-11 w-11 rounded-full text-[#aebac1]"
+                  variant="ghost"
+                  aria-label="Figurinhas"
+                  className="h-9 w-9 shrink-0 rounded-full text-[#aebac1] hover:bg-white/[0.06] hover:text-white"
                   onClick={() => {
                     setComposerError("");
-                    setShowStickers(false);
-                    if (!showAttachments) {
-                      setShowPollComposer(false);
-                    }
-                    setShowAttachments((value) => !value);
+                    setShowAttachments(false);
+                    setShowPollComposer(false);
+                    setShowStickers((value) => !value);
                   }}
                 >
-                  {uploadingImage ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
+                  <Smile className="h-5 w-5" />
                 </Button>
-
-                {showAttachments && (
-                  <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-50 w-56 rounded-2xl border border-white/10 bg-[#182229] p-2 shadow-2xl">
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-white transition hover:bg-white/[0.06]"
-                      onClick={() => {
-                        setShowAttachments(false);
-                        setShowPollComposer(false);
-                        imageInputRef.current?.click();
-                      }}
-                    >
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#b91c7d] text-white">
-                        <ImagePlus className="h-4 w-4" />
-                      </span>
-                      Foto
-                    </button>
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-white transition hover:bg-white/[0.06]"
-                      onClick={() => {
-                        setComposerError("");
-                        setShowStickers(false);
-                        setShowAttachments(false);
-                        setShowPollComposer((value) => !value);
-                      }}
-                    >
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#0f766e] text-white">
-                        <BarChart3 className="h-4 w-4" />
-                      </span>
-                      Enquete
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0 flex-1 rounded-[24px] bg-[#202c33] px-1">
                 <Textarea
                   ref={messageBoxRef}
                   rows={1}
@@ -411,8 +474,71 @@ export function ChatPanel({
                   data-lpignore="true"
                   data-1p-ignore="true"
                   data-bwignore="true"
-                  className="max-h-28 min-h-12 overflow-y-auto rounded-[24px] border-0 bg-transparent px-3.5 py-3 text-[15px] leading-6 focus:ring-0"
+                  className="max-h-24 min-h-10 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-2.5 text-[15px] leading-5 text-[#e9edef] placeholder:text-[#8696a0] focus:ring-0"
                 />
+                <div className="relative shrink-0">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    aria-label="Anexos"
+                    aria-expanded={showAttachments}
+                    disabled={!canChat || uploadingImage}
+                    className={cn(
+                      "h-9 w-9 rounded-full text-[#aebac1] hover:bg-white/[0.06] hover:text-white",
+                      (showAttachments || showPollComposer) &&
+                        "bg-white/[0.08] text-white",
+                    )}
+                    onClick={() => {
+                      setComposerError("");
+                      setShowStickers(false);
+                      if (!showAttachments) {
+                        setShowPollComposer(false);
+                      }
+                      setShowAttachments((value) => !value);
+                    }}
+                  >
+                    {uploadingImage ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Paperclip className="h-5 w-5" />
+                    )}
+                  </Button>
+
+                  {showAttachments && (
+                    <div className="absolute bottom-[calc(100%+0.625rem)] right-0 z-50 w-52 rounded-2xl border border-white/10 bg-[#182229] p-2 shadow-2xl">
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-white transition hover:bg-white/[0.06]"
+                        onClick={() => {
+                          setShowAttachments(false);
+                          setShowPollComposer(false);
+                          imageInputRef.current?.click();
+                        }}
+                      >
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#b91c7d] text-white">
+                          <ImagePlus className="h-4 w-4" />
+                        </span>
+                        Foto
+                      </button>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-white transition hover:bg-white/[0.06]"
+                        onClick={() => {
+                          setComposerError("");
+                          setShowStickers(false);
+                          setShowAttachments(false);
+                          setShowPollComposer((value) => !value);
+                        }}
+                      >
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#0f766e] text-white">
+                          <BarChart3 className="h-4 w-4" />
+                        </span>
+                        Enquete
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               {body.trim() ? (
                 <Button
@@ -420,7 +546,7 @@ export function ChatPanel({
                   size="icon"
                   aria-label="Enviar"
                   disabled={!canChat}
-                  className="h-11 w-11 shrink-0 rounded-full"
+                  className="h-11 w-11 shrink-0 rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
                   onPointerDown={(event) => {
                     if (event.pointerType !== "mouse") {
                       event.preventDefault();
@@ -441,17 +567,44 @@ export function ChatPanel({
               ) : (
                 <AudioRecorder
                   disabled={!participant?.canSendAudio || !canChat}
-                  onRecorded={(file, duration) =>
-                    uploadFile("audio", file).then((result) =>
-                      onSend({ type: "audio", audioUploadId: result.upload.id, audioDurationSeconds: duration })
-                    )
-                  }
+                  onError={(message) => setComposerError(message)}
+                  onRecorded={async (file, duration) => {
+                    setComposerError("");
+                    try {
+                      const result = await uploadFile("audio", file);
+                      onSend({
+                        type: "audio",
+                        audioUploadId: result.upload.id,
+                        audioDurationSeconds: duration,
+                      });
+                    } catch (error) {
+                      setComposerError(
+                        error instanceof Error
+                          ? error.message
+                          : "Nao foi possivel enviar o audio.",
+                      );
+                      throw error;
+                    }
+                  }}
                 />
               )}
             </div>
           </div>
         </div>
       </CardContent>
+
+      {selectedStickerMessage && (
+        <StickerDetailsDialog
+          message={selectedStickerMessage}
+          isSaving={saveSticker.isPending}
+          onClose={() => setSelectedStickerMessage(null)}
+          onSave={() => {
+            if (!selectedStickerMessage.stickerId) return;
+            saveSticker.mutate(selectedStickerMessage.stickerId);
+            setSelectedStickerMessage(null);
+          }}
+        />
+      )}
     </Card>
   );
 }
@@ -469,7 +622,8 @@ function MessageBubble({
   onDelete,
   onPin,
   onSaveSticker,
-  onPollVote
+  onOpenStickerDetails,
+  onPollVote,
 }: {
   message: ChatMessage;
   replyToMessage: ChatMessage | null;
@@ -483,15 +637,21 @@ function MessageBubble({
   onDelete: () => void;
   onPin: () => void;
   onSaveSticker: (stickerId: string) => void;
+  onOpenStickerDetails: () => void;
   onPollVote: (pollId: string, optionId: string) => void;
 }) {
   const [dragX, setDragX] = React.useState(0);
   const [isDragging, setIsDragging] = React.useState(false);
-  const pointerStart = React.useRef<{ x: number; y: number; id: number } | null>(null);
+  const pointerStart = React.useRef<{
+    x: number;
+    y: number;
+    id: number;
+  } | null>(null);
   const longPressTimer = React.useRef<number | null>(null);
   const canDelete = own || canModerate;
   const canCopy = Boolean(message.body);
-  const canSaveSticker = message.type === "sticker" && Boolean(message.stickerId);
+  const canSaveSticker =
+    message.type === "sticker" && Boolean(message.stickerId);
   const dragDirection = own ? -1 : 1;
 
   const clearLongPress = () => {
@@ -503,7 +663,11 @@ function MessageBubble({
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || isInteractiveTarget(event.target)) return;
-    pointerStart.current = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    pointerStart.current = {
+      x: event.clientX,
+      y: event.clientY,
+      id: event.pointerId,
+    };
     longPressTimer.current = window.setTimeout(() => {
       pointerStart.current = null;
       setDragX(0);
@@ -514,7 +678,8 @@ function MessageBubble({
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!pointerStart.current || pointerStart.current.id !== event.pointerId) return;
+    if (!pointerStart.current || pointerStart.current.id !== event.pointerId)
+      return;
 
     const deltaX = (event.clientX - pointerStart.current.x) * dragDirection;
     const deltaY = Math.abs(event.clientY - pointerStart.current.y);
@@ -559,23 +724,40 @@ function MessageBubble({
   const isSticker = message.type === "sticker";
 
   return (
-    <div className={cn("group relative flex items-end gap-2 py-0.5", own ? "justify-end" : "justify-start")}>
+    <div
+      className={cn(
+        "group relative flex items-end gap-2 py-0.5",
+        own ? "justify-end" : "justify-start",
+      )}
+    >
       {isDragging && (
         <div
           className={cn(
             "absolute top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-primary/90 text-white shadow-lg transition",
-            own ? "right-3" : "left-10"
+            own ? "right-3" : "left-10",
           )}
         >
           <Reply className="h-4 w-4" />
         </div>
       )}
 
-      {!own && <Avatar src={message.authorImage} name={message.authorName} className="h-7 w-7 rounded-full" />}
+      {!own && (
+        <Avatar
+          src={message.authorImage}
+          name={message.authorName}
+          className="h-7 w-7 rounded-full"
+        />
+      )}
 
       <div
-        className={cn("max-w-[min(82%,430px)] touch-pan-y", own ? "ml-12" : "mr-12")}
-        style={{ transform: `translateX(${dragX}px)`, transition: isDragging ? "none" : "transform 160ms ease" }}
+        className={cn(
+          "max-w-[min(82%,430px)] touch-pan-y",
+          own ? "ml-12" : "mr-12",
+        )}
+        style={{
+          transform: `translateX(${dragX}px)`,
+          transition: isDragging ? "none" : "transform 160ms ease",
+        }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerEnd}
@@ -591,11 +773,12 @@ function MessageBubble({
                   message.type === "image" && "p-1",
                   message.type === "audio" && "px-2 py-1",
                   message.type === "poll" && "px-3 py-2.5",
-                  !["audio", "image", "poll"].includes(message.type) && "px-3 py-2",
+                  !["audio", "image", "poll"].includes(message.type) &&
+                    "px-3 py-2",
                   own
                     ? "rounded-br-md bg-[#005c4b] text-white"
-                    : "rounded-bl-md bg-[#202c33] text-[#e9edef]"
-                ]
+                    : "rounded-bl-md bg-[#202c33] text-[#e9edef]",
+                ],
           )}
         >
           {!isSticker && (
@@ -604,7 +787,7 @@ function MessageBubble({
                 "absolute bottom-0 h-3 w-3",
                 own
                   ? "-right-1 bg-[#005c4b] [clip-path:polygon(0_0,100%_100%,0_100%)]"
-                  : "-left-1 bg-[#202c33] [clip-path:polygon(100%_0,100%_100%,0_100%)]"
+                  : "-left-1 bg-[#202c33] [clip-path:polygon(100%_0,100%_100%,0_100%)]",
               )}
             />
           )}
@@ -622,26 +805,41 @@ function MessageBubble({
             </div>
           )}
 
-          {replyToMessage && <ReplySnippet message={replyToMessage} own={own} />}
+          {replyToMessage && (
+            <ReplySnippet message={replyToMessage} own={own} />
+          )}
 
           {message.type === "text" && (
-            <p className="whitespace-pre-wrap break-words pr-1 text-[14.5px] leading-snug">{message.body}</p>
+            <p className="whitespace-pre-wrap break-words pr-1 text-[14.5px] leading-snug">
+              {message.body}
+            </p>
           )}
           {message.type === "sticker" && message.stickerUrl && (
             <div className="space-y-1 rounded-xl bg-transparent">
-              <img
-                src={resolveMediaUrl(message.stickerUrl)}
-                alt={message.stickerName ?? "Figurinha"}
-                className="h-28 w-28 rounded-lg object-contain sm:h-32 sm:w-32"
-              />
-              <StickerAttribution
-                creatorName={message.stickerOriginalCreatorName}
-                createdAt={message.stickerOriginalCreatedAt}
-              />
+              <button
+                type="button"
+                aria-label="Ver detalhes da figurinha"
+                className="block rounded-xl bg-transparent p-0 transition active:scale-[0.98]"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenStickerDetails();
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <img
+                  src={resolveMediaUrl(message.stickerUrl)}
+                  alt={message.stickerName ?? "Figurinha"}
+                  className="h-28 w-28 rounded-lg object-contain sm:h-32 sm:w-32"
+                />
+              </button>
             </div>
           )}
           {message.type === "audio" && message.audioUrl && (
-            <AudioMessage src={resolveMediaUrl(message.audioUrl)} duration={message.audioDuration ?? 0} own={own} />
+            <AudioMessage
+              src={resolveMediaUrl(message.audioUrl)}
+              duration={message.audioDuration ?? 0}
+              own={own}
+            />
           )}
           {message.type === "image" && message.imageUrl && (
             <div className="min-w-[160px] max-w-[260px] sm:max-w-[290px]">
@@ -654,7 +852,9 @@ function MessageBubble({
                 />
               </div>
               {message.body && (
-                <p className="mt-2 whitespace-pre-wrap break-words px-1 text-[14px] leading-snug">{message.body}</p>
+                <p className="mt-2 whitespace-pre-wrap break-words px-1 text-[14px] leading-snug">
+                  {message.body}
+                </p>
               )}
             </div>
           )}
@@ -665,7 +865,7 @@ function MessageBubble({
           <div
             className={cn(
               "mt-1 flex items-center gap-1 text-[11px]",
-              own ? "justify-end text-[#d7f7ee]" : "justify-end text-[#aebac1]"
+              own ? "justify-end text-[#d7f7ee]" : "justify-end text-[#aebac1]",
             )}
           >
             {Boolean(message.likes) && (
@@ -684,7 +884,7 @@ function MessageBubble({
               "absolute top-1 grid h-7 w-7 place-items-center rounded-full bg-black/15 text-[#d1d7db] opacity-0 transition hover:bg-black/25",
               own ? "left-1" : "right-1",
               actionsOpen && "opacity-100",
-              "group-hover:opacity-100 group-focus-within:opacity-100"
+              "group-hover:opacity-100 group-focus-within:opacity-100",
             )}
             onClick={(event) => {
               event.stopPropagation();
@@ -721,50 +921,159 @@ function MessageBubble({
   );
 }
 
-function ReplySnippet({ message, own }: { message: ChatMessage; own: boolean }) {
+function ReplySnippet({
+  message,
+  own,
+}: {
+  message: ChatMessage;
+  own: boolean;
+}) {
   return (
     <div
       className={cn(
         "mb-1.5 min-w-0 rounded-lg border-l-4 px-2.5 py-1.5",
-        own ? "border-[#8fe7cf] bg-black/20" : "border-primary bg-black/15"
+        own ? "border-[#8fe7cf] bg-black/20" : "border-primary bg-black/15",
       )}
     >
-      <p className={cn("truncate text-[11px] font-bold", own ? "text-[#baf7e9]" : "text-primary")}>
+      <p
+        className={cn(
+          "truncate text-[11px] font-bold",
+          own ? "text-[#baf7e9]" : "text-primary",
+        )}
+      >
         {message.authorName ?? "Mensagem"}
       </p>
-      <p className="truncate text-[12px] text-[#d1d7db]">{replyPreview(message)}</p>
+      <p className="truncate text-[12px] text-[#d1d7db]">
+        {replyPreview(message)}
+      </p>
     </div>
   );
 }
 
-function StickerAttribution({
-  creatorName,
-  createdAt
+function StickerDetailsDialog({
+  message,
+  isSaving,
+  onClose,
+  onSave,
 }: {
-  creatorName?: string | null | undefined;
-  createdAt?: string | null | undefined;
+  message: ChatMessage;
+  isSaving: boolean;
+  onClose: () => void;
+  onSave: () => void;
 }) {
-  if (!creatorName && !createdAt) {
-    return null;
-  }
+  const creatorName =
+    message.stickerOriginalCreatorName?.trim() || "Criador nao informado";
+  const createdAt = message.stickerOriginalCreatedAt
+    ? stickerDateLabel(message.stickerOriginalCreatedAt)
+    : "Data nao informada";
+  const title = message.stickerName?.trim() || "Figurinha";
 
   return (
-    <p className="max-w-32 truncate rounded-full bg-black/35 px-2 py-0.5 text-[10px] font-medium text-[#e9edef]">
-      {stickerMetaLabel({ originalCreatorName: creatorName, originalCreatedAt: createdAt })}
-    </p>
+    <div
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-sm sm:items-center sm:pb-10"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Detalhes da figurinha"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm overflow-hidden rounded-2xl border border-white/10 bg-[#111b21] shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black text-white">
+              Detalhes da figurinha
+            </p>
+            <p className="truncate text-xs text-[#aebac1]">{title}</p>
+          </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Fechar"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="p-4">
+          <div className="grid place-items-center rounded-2xl bg-black/20 p-4">
+            {message.stickerUrl && (
+              <img
+                src={resolveMediaUrl(message.stickerUrl)}
+                alt={title}
+                className="h-40 w-40 rounded-xl object-contain"
+              />
+            )}
+          </div>
+
+          <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-white/[0.035] p-3">
+            <StickerDetailRow label="Criador original" value={creatorName} />
+            <StickerDetailRow label="Criada em" value={createdAt} />
+          </div>
+
+          <div className="mt-4 flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={onClose}>
+              Fechar
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={!message.stickerId || isSaving}
+              onClick={onSave}
+            >
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              Salvar
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
-function AudioMessage({ src, duration, own }: { src: string; duration: number; own: boolean }) {
+function StickerDetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase text-[#aebac1]">
+          {label}
+        </p>
+        <p className="break-words text-[#e9edef]">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function AudioMessage({
+  src,
+  duration,
+  own,
+}: {
+  src: string;
+  duration: number;
+  own: boolean;
+}) {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);
   const [loadedDuration, setLoadedDuration] = React.useState(duration);
-  const totalDuration = Number.isFinite(loadedDuration) ? loadedDuration || duration || 0 : duration || 0;
-  const progress = totalDuration > 0 ? Math.min(1, currentTime / totalDuration) : 0;
+  const totalDuration = Number.isFinite(loadedDuration)
+    ? loadedDuration || duration || 0
+    : duration || 0;
+  const progress =
+    totalDuration > 0 ? Math.min(1, currentTime / totalDuration) : 0;
   const displayTime = isPlaying ? currentTime : totalDuration;
   const safeDisplayTime = Number.isFinite(displayTime) ? displayTime : 0;
-  const bars = React.useMemo(() => [9, 6, 12, 16, 8, 13, 17, 10, 14, 7, 12, 16, 9, 13], []);
+  const bars = React.useMemo(
+    () => [9, 6, 12, 16, 8, 13, 17, 10, 14, 7, 12, 16, 9, 13],
+    [],
+  );
 
   const togglePlayback = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -793,9 +1102,13 @@ function AudioMessage({ src, duration, own }: { src: string; duration: number; o
         preload="metadata"
         onLoadedMetadata={(event) => {
           const nextDuration = event.currentTarget.duration;
-          setLoadedDuration(Number.isFinite(nextDuration) ? nextDuration : duration);
+          setLoadedDuration(
+            Number.isFinite(nextDuration) ? nextDuration : duration,
+          );
         }}
-        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onTimeUpdate={(event) =>
+          setCurrentTime(event.currentTarget.currentTime)
+        }
         onEnded={() => {
           setIsPlaying(false);
           setCurrentTime(0);
@@ -807,12 +1120,16 @@ function AudioMessage({ src, duration, own }: { src: string; duration: number; o
         title={isPlaying ? "Pausar audio" : "Reproduzir audio"}
         className={cn(
           "grid h-7 w-7 shrink-0 place-items-center rounded-full shadow-sm transition",
-          own ? "bg-white text-[#005c4b]" : "bg-primary text-white"
+          own ? "bg-white text-[#005c4b]" : "bg-primary text-white",
         )}
         onClick={togglePlayback}
         onPointerDown={(event) => event.stopPropagation()}
       >
-        {isPlaying ? <Pause className="h-3 w-3 fill-current" /> : <Play className="ml-0.5 h-3 w-3 fill-current" />}
+        {isPlaying ? (
+          <Pause className="h-3 w-3 fill-current" />
+        ) : (
+          <Play className="ml-0.5 h-3 w-3 fill-current" />
+        )}
       </button>
       <div className="min-w-0 flex-1">
         <div className="flex h-5 items-center gap-0.5" aria-hidden="true">
@@ -823,14 +1140,23 @@ function AudioMessage({ src, duration, own }: { src: string; duration: number; o
                 key={`${height}-${index}`}
                 className={cn(
                   "w-0.5 rounded-full transition-colors",
-                  filled ? (own ? "bg-[#d7f7ee]" : "bg-primary") : "bg-white/25"
+                  filled
+                    ? own
+                      ? "bg-[#d7f7ee]"
+                      : "bg-primary"
+                    : "bg-white/25",
                 )}
                 style={{ height }}
               />
             );
           })}
         </div>
-        <div className={cn("text-[10px] leading-none", own ? "text-[#d7f7ee]" : "text-[#aebac1]")}>
+        <div
+          className={cn(
+            "text-[10px] leading-none",
+            own ? "text-[#d7f7ee]" : "text-[#aebac1]",
+          )}
+        >
           {formatDuration(safeDisplayTime)}
         </div>
       </div>
@@ -841,25 +1167,36 @@ function AudioMessage({ src, duration, own }: { src: string; duration: number; o
 function PollMessage({
   poll,
   own,
-  onVote
+  onVote,
 }: {
   poll: NonNullable<ChatMessage["poll"]>;
   own: boolean;
   onVote: (pollId: string, optionId: string) => void;
 }) {
   const totalVotes =
-    poll.totalVotes ?? poll.options.reduce((total, option) => total + (option.votes ?? 0), 0);
+    poll.totalVotes ??
+    poll.options.reduce((total, option) => total + (option.votes ?? 0), 0);
 
   return (
     <div className="min-w-[230px] max-w-[330px]">
       <div className="mb-2 flex items-start gap-2">
-        <BarChart3 className={cn("mt-0.5 h-4 w-4 shrink-0", own ? "text-[#d7f7ee]" : "text-primary")} />
+        <BarChart3
+          className={cn(
+            "mt-0.5 h-4 w-4 shrink-0",
+            own ? "text-[#d7f7ee]" : "text-primary",
+          )}
+        />
         <div className="min-w-0 flex-1">
           <p className="whitespace-pre-wrap break-words text-[14.5px] font-semibold leading-snug">
             {poll.question}
           </p>
           {poll.allowsMultiple && (
-            <p className={cn("mt-0.5 text-[11px]", own ? "text-[#d7f7ee]" : "text-[#aebac1]")}>
+            <p
+              className={cn(
+                "mt-0.5 text-[11px]",
+                own ? "text-[#d7f7ee]" : "text-[#aebac1]",
+              )}
+            >
               Pode escolher mais de uma opcao
             </p>
           )}
@@ -869,7 +1206,8 @@ function PollMessage({
       <div className="space-y-1.5">
         {poll.options.map((option) => {
           const votes = option.votes ?? 0;
-          const percent = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+          const percent =
+            totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
 
           return (
             <button
@@ -879,7 +1217,7 @@ function PollMessage({
                 "relative w-full overflow-hidden rounded-xl border px-3 py-2 text-left transition active:scale-[0.99]",
                 own
                   ? "border-white/15 bg-black/15 hover:bg-black/20"
-                  : "border-white/10 bg-black/10 hover:bg-white/[0.04]"
+                  : "border-white/10 bg-black/10 hover:bg-white/[0.04]",
               )}
               onClick={(event) => {
                 event.stopPropagation();
@@ -890,14 +1228,21 @@ function PollMessage({
               <span
                 className={cn(
                   "absolute inset-y-0 left-0 transition-[width]",
-                  own ? "bg-[#8fe7cf]/25" : "bg-primary/20"
+                  own ? "bg-[#8fe7cf]/25" : "bg-primary/20",
                 )}
                 style={{ width: `${percent}%` }}
                 aria-hidden="true"
               />
               <span className="relative flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-sm">{option.body}</span>
-                <span className={cn("text-xs font-semibold", own ? "text-[#d7f7ee]" : "text-[#cfe9ff]")}>
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  {option.body}
+                </span>
+                <span
+                  className={cn(
+                    "text-xs font-semibold",
+                    own ? "text-[#d7f7ee]" : "text-[#cfe9ff]",
+                  )}
+                >
                   {percent}%
                 </span>
                 {option.votedByMe && (
@@ -911,7 +1256,12 @@ function PollMessage({
         })}
       </div>
 
-      <p className={cn("mt-2 text-[11px]", own ? "text-[#d7f7ee]" : "text-[#aebac1]")}>
+      <p
+        className={cn(
+          "mt-2 text-[11px]",
+          own ? "text-[#d7f7ee]" : "text-[#aebac1]",
+        )}
+      >
         {totalVotes} {totalVotes === 1 ? "voto" : "votos"}
       </p>
     </div>
@@ -920,9 +1270,13 @@ function PollMessage({
 
 function PollComposer({
   onSubmit,
-  onClose
+  onClose,
 }: {
-  onSubmit: (poll: { question: string; options: string[]; allowsMultiple?: boolean }) => void;
+  onSubmit: (poll: {
+    question: string;
+    options: string[];
+    allowsMultiple?: boolean;
+  }) => void;
   onClose: () => void;
 }) {
   const [question, setQuestion] = React.useState("");
@@ -931,16 +1285,24 @@ function PollComposer({
   const [error, setError] = React.useState("");
 
   const updateOption = (index: number, value: string) => {
-    setOptions((current) => current.map((option, currentIndex) => (currentIndex === index ? value : option)));
+    setOptions((current) =>
+      current.map((option, currentIndex) =>
+        currentIndex === index ? value : option,
+      ),
+    );
   };
 
   const removeOption = (index: number) => {
-    setOptions((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    setOptions((current) =>
+      current.filter((_, currentIndex) => currentIndex !== index),
+    );
   };
 
   const submit = () => {
     const cleanQuestion = question.trim();
-    const cleanOptions = [...new Set(options.map((option) => option.trim()).filter(Boolean))];
+    const cleanOptions = [
+      ...new Set(options.map((option) => option.trim()).filter(Boolean)),
+    ];
 
     if (cleanQuestion.length < 3) {
       setError("Escreva uma pergunta um pouco maior.");
@@ -952,7 +1314,11 @@ function PollComposer({
     }
 
     setError("");
-    onSubmit({ question: cleanQuestion, options: cleanOptions, allowsMultiple });
+    onSubmit({
+      question: cleanQuestion,
+      options: cleanOptions,
+      allowsMultiple,
+    });
     setQuestion("");
     setOptions(["", ""]);
     setAllowsMultiple(false);
@@ -963,9 +1329,16 @@ function PollComposer({
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-white">Enquete</p>
-          <p className="truncate text-xs text-[#aebac1]">Pergunte algo para o grupo votar</p>
+          <p className="truncate text-xs text-[#aebac1]">
+            Pergunte algo para o grupo votar
+          </p>
         </div>
-        <Button size="icon" variant="ghost" aria-label="Fechar enquete" onClick={onClose}>
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="Fechar enquete"
+          onClick={onClose}
+        >
           <X className="h-4 w-4" />
         </Button>
       </div>
@@ -1047,7 +1420,7 @@ function CompactActionMenu({
   onCopy,
   onSaveSticker,
   onPin,
-  onDelete
+  onDelete,
 }: {
   own: boolean;
   canCopy: boolean;
@@ -1066,16 +1439,34 @@ function CompactActionMenu({
     <div
       className={cn(
         "absolute -top-11 z-40 flex w-max max-w-[calc(100vw-32px)] items-center gap-1 rounded-full bg-[#233138] p-1 text-[#e9edef] shadow-2xl ring-1 ring-black/40",
-        own ? "right-0" : "left-0"
+        own ? "right-0" : "left-0",
       )}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <ActionIconButton icon={<Reply className="h-4 w-4" />} label="Responder" onClick={onReply} />
-      <ActionIconButton icon={<Heart className="h-4 w-4" />} label="Curtir" onClick={onLike} />
-      {canCopy && <ActionIconButton icon={<Copy className="h-4 w-4" />} label="Copiar" onClick={onCopy} />}
+      <ActionIconButton
+        icon={<Reply className="h-4 w-4" />}
+        label="Responder"
+        onClick={onReply}
+      />
+      <ActionIconButton
+        icon={<Heart className="h-4 w-4" />}
+        label="Curtir"
+        onClick={onLike}
+      />
+      {canCopy && (
+        <ActionIconButton
+          icon={<Copy className="h-4 w-4" />}
+          label="Copiar"
+          onClick={onCopy}
+        />
+      )}
       {canSaveSticker && (
-        <ActionIconButton icon={<Plus className="h-4 w-4" />} label="Salvar figurinha" onClick={onSaveSticker} />
+        <ActionIconButton
+          icon={<Plus className="h-4 w-4" />}
+          label="Salvar figurinha"
+          onClick={onSaveSticker}
+        />
       )}
       {canModerate && (
         <ActionIconButton
@@ -1085,7 +1476,12 @@ function CompactActionMenu({
         />
       )}
       {canDelete && (
-        <ActionIconButton icon={<Trash2 className="h-4 w-4" />} label="Excluir" onClick={onDelete} destructive />
+        <ActionIconButton
+          icon={<Trash2 className="h-4 w-4" />}
+          label="Excluir"
+          onClick={onDelete}
+          destructive
+        />
       )}
     </div>
   );
@@ -1095,7 +1491,7 @@ function ActionIconButton({
   icon,
   label,
   onClick,
-  destructive = false
+  destructive = false,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -1109,7 +1505,7 @@ function ActionIconButton({
       title={label}
       className={cn(
         "grid h-9 w-9 place-items-center rounded-full transition hover:bg-white/[0.08]",
-        destructive ? "text-red-200" : "text-[#d1d7db]"
+        destructive ? "text-red-200" : "text-[#d1d7db]",
       )}
       onClick={onClick}
     >
@@ -1120,19 +1516,29 @@ function ActionIconButton({
 
 type StickerPackSummary = Omit<StickerPack, "stickers">;
 
-function StickerTray({ onPick, onClose }: { onPick: (sticker: Sticker) => void; onClose: () => void }) {
+function StickerTray({
+  onPick,
+  onClose,
+}: {
+  onPick: (sticker: Sticker) => void;
+  onClose: () => void;
+}) {
   const { data, isLoading } = useStickerPacks();
   const queryClient = useQueryClient();
   const [packName, setPackName] = React.useState("Favoritas");
-  const [selectedPackId, setSelectedPackId] = React.useState<string | null>(null);
+  const [selectedPackId, setSelectedPackId] = React.useState<string | null>(
+    null,
+  );
   const [showPackForm, setShowPackForm] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState("");
   const fileRef = React.useRef<HTMLInputElement | null>(null);
   const packs = data?.packs ?? [];
   const firstPack = packs[0] ?? null;
-  const selectedPack = packs.find((pack) => pack.id === selectedPackId) ?? firstPack;
-  const visibleStickers = selectedPack?.stickers ?? packs.flatMap((pack) => pack.stickers);
+  const selectedPack =
+    packs.find((pack) => pack.id === selectedPackId) ?? firstPack;
+  const visibleStickers =
+    selectedPack?.stickers ?? packs.flatMap((pack) => pack.stickers);
 
   React.useEffect(() => {
     if (!selectedPackId && firstPack) {
@@ -1143,7 +1549,7 @@ function StickerTray({ onPick, onClose }: { onPick: (sticker: Sticker) => void; 
   const createPackRequest = async (name: string) => {
     const result = await api<{ pack: StickerPackSummary }>("/stickers/packs", {
       method: "POST",
-      json: { name }
+      json: { name },
     });
     return result.pack;
   };
@@ -1157,8 +1563,12 @@ function StickerTray({ onPick, onClose }: { onPick: (sticker: Sticker) => void; 
       await queryClient.invalidateQueries({ queryKey: ["stickers", "packs"] });
     },
     onError: (packError) => {
-      setError(packError instanceof Error ? packError.message : "Nao foi possivel criar o pacote.");
-    }
+      setError(
+        packError instanceof Error
+          ? packError.message
+          : "Nao foi possivel criar o pacote.",
+      );
+    },
   });
 
   const createPackFromInput = () => {
@@ -1181,7 +1591,9 @@ function StickerTray({ onPick, onClose }: { onPick: (sticker: Sticker) => void; 
     try {
       let packId = selectedPack?.id;
       if (!packId) {
-        const createdPack = await createPackRequest(packName.trim().length >= 2 ? packName.trim() : "Favoritas");
+        const createdPack = await createPackRequest(
+          packName.trim().length >= 2 ? packName.trim() : "Favoritas",
+        );
         packId = createdPack.id;
         setSelectedPackId(packId);
       }
@@ -1189,11 +1601,18 @@ function StickerTray({ onPick, onClose }: { onPick: (sticker: Sticker) => void; 
       const uploaded = await uploadFile("sticker", file);
       await api(`/stickers/packs/${packId}/stickers`, {
         method: "POST",
-        json: { uploadId: uploaded.upload.id, name: file.name.replace(/\.[a-z0-9]+$/i, "") }
+        json: {
+          uploadId: uploaded.upload.id,
+          name: file.name.replace(/\.[a-z0-9]+$/i, ""),
+        },
       });
       await queryClient.invalidateQueries({ queryKey: ["stickers", "packs"] });
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Nao foi possivel enviar a figurinha.");
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Nao foi possivel enviar a figurinha.",
+      );
     } finally {
       setUploading(false);
     }
@@ -1201,13 +1620,21 @@ function StickerTray({ onPick, onClose }: { onPick: (sticker: Sticker) => void; 
 
   return (
     <div className="mx-2 mt-2 rounded-2xl border border-white/10 bg-[#111b21] p-2.5 shadow-2xl">
-      <input ref={fileRef} type="file" accept="image/*" className="sr-only" onChange={uploadSticker} />
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        onChange={uploadSticker}
+      />
 
       <div className="flex items-center gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-white">Figurinhas</p>
           <p className="truncate text-[11px] text-[#aebac1]">
-            {selectedPack ? selectedPack.name : "Crie ou envie sua primeira figurinha"}
+            {selectedPack
+              ? selectedPack.name
+              : "Crie ou envie sua primeira figurinha"}
           </p>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -1220,7 +1647,11 @@ function StickerTray({ onPick, onClose }: { onPick: (sticker: Sticker) => void; 
             disabled={uploading || isLoading}
             onClick={() => fileRef.current?.click()}
           >
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+            {uploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ImagePlus className="h-4 w-4" />
+            )}
           </Button>
           <Button
             size="icon"
@@ -1258,7 +1689,7 @@ function StickerTray({ onPick, onClose }: { onPick: (sticker: Sticker) => void; 
                 "h-8 shrink-0 rounded-full px-3 text-xs font-semibold transition",
                 selectedPack?.id === pack.id
                   ? "bg-primary text-primary-foreground"
-                  : "bg-[#202c33] text-[#aebac1] hover:bg-[#2a3942] hover:text-white"
+                  : "bg-[#202c33] text-[#aebac1] hover:bg-[#2a3942] hover:text-white",
               )}
               onClick={() => setSelectedPackId(pack.id)}
             >
@@ -1284,7 +1715,11 @@ function StickerTray({ onPick, onClose }: { onPick: (sticker: Sticker) => void; 
             disabled={createPack.isPending}
             onClick={createPackFromInput}
           >
-            {createPack.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {createPack.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4" />
+            )}
           </Button>
         </div>
       )}
@@ -1333,14 +1768,18 @@ function StickerTray({ onPick, onClose }: { onPick: (sticker: Sticker) => void; 
 
 function AudioRecorder({
   disabled,
-  onRecorded
+  onRecorded,
+  onError,
 }: {
   disabled: boolean;
-  onRecorded: (file: File, duration: number) => void;
+  onRecorded: (file: File, duration: number) => void | Promise<void>;
+  onError: (message: string) => void;
 }) {
   const [recording, setRecording] = React.useState(false);
+  const [processing, setProcessing] = React.useState(false);
   const [elapsed, setElapsed] = React.useState(0);
   const recorderRef = React.useRef<MediaRecorder | null>(null);
+  const streamRef = React.useRef<MediaStream | null>(null);
   const startedAt = React.useRef(0);
   const maxTimerRef = React.useRef<number | null>(null);
   const elapsedTimerRef = React.useRef<number | null>(null);
@@ -1356,44 +1795,153 @@ function AudioRecorder({
     }
   };
 
-  React.useEffect(() => clearRecordingTimers, []);
+  const stopStream = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  };
+
+  React.useEffect(
+    () => () => {
+      clearRecordingTimers();
+      stopStream();
+      const recorder = recorderRef.current;
+      if (recorder?.state === "recording") {
+        recorder.stop();
+      }
+    },
+    [],
+  );
 
   const stopRecording = () => {
     const recorder = recorderRef.current;
     if (recorder?.state === "recording") {
+      try {
+        recorder.requestData();
+      } catch {
+        // Some mobile browsers do not allow requesting data right before stop.
+      }
       recorder.stop();
     }
   };
 
   const toggle = async () => {
+    if (disabled || processing) {
+      return;
+    }
     if (recording) {
       stopRecording();
       return;
     }
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const recorder = new MediaRecorder(stream);
-    const chunks: BlobPart[] = [];
-    startedAt.current = Date.now();
-    setElapsed(0);
-    recorder.ondataavailable = (event) => chunks.push(event.data);
-    recorder.onstop = () => {
-      clearRecordingTimers();
-      stream.getTracks().forEach((track) => track.stop());
-      const blob = new Blob(chunks, { type: "audio/webm" });
-      const file = new File([blob], `audio-${Date.now()}.webm`, { type: "audio/webm" });
-      const duration = Math.min(MAX_AUDIO_DURATION_SECONDS, Math.max(1, (Date.now() - startedAt.current) / 1000));
-      onRecorded(file, duration);
-      setRecording(false);
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      onError("Este navegador nao permite gravar audio aqui.");
+      return;
+    }
+
+    setProcessing(true);
+    let stream: MediaStream | null = null;
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+      streamRef.current = stream;
+
+      const mimeType = getSupportedAudioMimeType();
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined,
+      );
+      const chunks: BlobPart[] = [];
+      startedAt.current = Date.now();
       setElapsed(0);
-    };
-    recorderRef.current = recorder;
-    recorder.start();
-    setRecording(true);
-    elapsedTimerRef.current = window.setInterval(() => {
-      setElapsed(Math.min(MAX_AUDIO_DURATION_SECONDS, Math.floor((Date.now() - startedAt.current) / 1000)));
-    }, 250);
-    maxTimerRef.current = window.setTimeout(stopRecording, MAX_AUDIO_DURATION_SECONDS * 1000);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+      recorder.onerror = () => {
+        clearRecordingTimers();
+        stopStream();
+        recorderRef.current = null;
+        setRecording(false);
+        setProcessing(false);
+        setElapsed(0);
+        onError("A gravacao de audio falhou. Tente novamente.");
+      };
+      recorder.onstop = () => {
+        clearRecordingTimers();
+        stopStream();
+        recorderRef.current = null;
+        setRecording(false);
+        setElapsed(0);
+
+        const finalMimeType = recorder.mimeType || mimeType || "audio/webm";
+        const duration = Math.min(
+          MAX_AUDIO_DURATION_SECONDS,
+          Math.max(1, (Date.now() - startedAt.current) / 1000),
+        );
+
+        if (chunks.length === 0) {
+          setProcessing(false);
+          onError("O audio ficou vazio. Tente gravar novamente.");
+          return;
+        }
+
+        const blob = new Blob(chunks, { type: finalMimeType });
+        const file = new File(
+          [blob],
+          `audio-${Date.now()}${audioExtensionFromMimeType(finalMimeType)}`,
+          {
+            type: finalMimeType,
+          },
+        );
+
+        setProcessing(true);
+        void Promise.resolve(onRecorded(file, duration))
+          .catch((error) => {
+            onError(
+              error instanceof Error
+                ? error.message
+                : "Nao foi possivel enviar o audio.",
+            );
+          })
+          .finally(() => setProcessing(false));
+      };
+
+      recorderRef.current = recorder;
+      recorder.start(500);
+      setRecording(true);
+      setProcessing(false);
+      elapsedTimerRef.current = window.setInterval(() => {
+        setElapsed(
+          Math.min(
+            MAX_AUDIO_DURATION_SECONDS,
+            Math.floor((Date.now() - startedAt.current) / 1000),
+          ),
+        );
+      }, 250);
+      maxTimerRef.current = window.setTimeout(
+        stopRecording,
+        MAX_AUDIO_DURATION_SECONDS * 1000,
+      );
+    } catch (error) {
+      clearRecordingTimers();
+      stream?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      recorderRef.current = null;
+      setRecording(false);
+      setProcessing(false);
+      setElapsed(0);
+      onError(audioRecorderErrorMessage(error));
+    }
   };
 
   return (
@@ -1408,11 +1956,15 @@ function AudioRecorder({
         size="icon"
         variant={recording ? "secondary" : "default"}
         aria-label={recording ? "Parar gravacao" : "Gravar audio"}
-        disabled={disabled}
+        disabled={disabled || processing}
         onClick={toggle}
         className="h-11 w-11 shrink-0 rounded-full"
       >
-        <Mic className="h-5 w-5" />
+        {processing ? (
+          <Loader2 className="h-5 w-5 animate-spin" />
+        ) : (
+          <Mic className="h-5 w-5" />
+        )}
       </Button>
     </div>
   );
@@ -1434,7 +1986,10 @@ function dayKey(value: string) {
 }
 
 function isInteractiveTarget(target: EventTarget) {
-  return target instanceof HTMLElement && Boolean(target.closest("button, a, input, textarea, select, audio"));
+  return (
+    target instanceof HTMLElement &&
+    Boolean(target.closest("button, a, input, textarea, select, audio"))
+  );
 }
 
 function dayLabel(value: string) {
@@ -1448,28 +2003,33 @@ function dayLabel(value: string) {
 
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
-    month: "short"
+    month: "short",
   }).format(date);
 }
 
 function timeLabel(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
   }).format(new Date(value));
 }
 
 function stickerMetaLabel(
-  sticker: Pick<Sticker, "name" | "originalCreatorName" | "originalCreatedAt"> | {
-    originalCreatorName?: string | null | undefined;
-    originalCreatedAt?: string | null | undefined;
-  }
+  sticker:
+    | Pick<Sticker, "name" | "originalCreatorName" | "originalCreatedAt">
+    | {
+        originalCreatorName?: string | null | undefined;
+        originalCreatedAt?: string | null | undefined;
+      },
 ) {
   const creatorName = sticker.originalCreatorName?.trim();
-  const createdAt = sticker.originalCreatedAt ? stickerDateLabel(sticker.originalCreatedAt) : "";
+  const createdAt = sticker.originalCreatedAt
+    ? stickerDateLabel(sticker.originalCreatedAt)
+    : "";
   const fallback = "name" in sticker ? sticker.name : "Figurinha";
 
-  if (creatorName && createdAt) return `Criada por ${creatorName} - ${createdAt}`;
+  if (creatorName && createdAt)
+    return `Criada por ${creatorName} - ${createdAt}`;
   if (creatorName) return `Criada por ${creatorName}`;
   if (createdAt) return `Criada em ${createdAt}`;
   return fallback;
@@ -1479,7 +2039,7 @@ function stickerDateLabel(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "2-digit",
-    year: "numeric"
+    year: "numeric",
   }).format(new Date(value));
 }
 

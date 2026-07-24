@@ -47,6 +47,7 @@ type RoomForm = {
   backgroundUrl: string;
   radioEnabled: boolean;
   radioUrl: string;
+  rules: string;
 };
 
 const blankRoom: RoomForm = {
@@ -60,6 +61,7 @@ const blankRoom: RoomForm = {
   backgroundUrl: "",
   radioEnabled: false,
   radioUrl: "",
+  rules: "",
 };
 
 function previewRoomSlug(value: string) {
@@ -176,6 +178,7 @@ export function AdminPage() {
         radioEnabled:
           form.type === "group" && form.radioEnabled && radioUrl.length > 0,
         radioUrl: radioUrl.length > 0 ? radioUrl : null,
+        rules: form.rules.trim(),
       };
       if (editing) {
         return api(`/admin/rooms/${editing.id}`, {
@@ -199,6 +202,7 @@ export function AdminPage() {
     form.name.trim().length >= 2 &&
     form.category.trim().length >= 2 &&
     form.description.trim().length >= 8 &&
+    form.rules.trim().length <= 2000 &&
     (form.type !== "group" ||
       !form.radioEnabled ||
       form.radioUrl.trim().length > 0) &&
@@ -245,6 +249,7 @@ export function AdminPage() {
       backgroundUrl: room.backgroundUrl ?? "",
       radioEnabled: Boolean(room.radioEnabled && room.radioUrl),
       radioUrl: room.radioUrl ?? "",
+      rules: room.rules ?? "",
     });
   };
 
@@ -828,6 +833,26 @@ export function AdminPage() {
                         A descrição precisa ter pelo menos 8 caracteres.
                       </p>
                     )}
+                  <label className="block space-y-1.5">
+                    <span className="block text-xs font-semibold text-muted-foreground">
+                      Regras da comunidade
+                    </span>
+                    <Textarea
+                      placeholder="Ex: respeite todos, sem spam, sem ofensas, sem divulgar conteudo proibido."
+                      value={form.rules}
+                      onChange={(event) =>
+                        setForm({ ...form, rules: event.target.value })
+                      }
+                    />
+                    <span className="block text-xs leading-relaxed text-muted-foreground">
+                      O usuario ve essas regras antes de clicar em Quero entrar.
+                    </span>
+                  </label>
+                  {form.rules.trim().length > 2000 && (
+                    <p className="rounded-lg border border-amber-400/[0.20] bg-amber-500/[0.10] p-3 text-sm text-amber-100">
+                      As regras podem ter no maximo 2000 caracteres.
+                    </p>
+                  )}
                   {saveRoom.error && (
                     <p className="rounded-lg border border-red-400/[0.20] bg-red-500/[0.10] p-3 text-sm text-red-100">
                       {saveRoom.error instanceof Error
