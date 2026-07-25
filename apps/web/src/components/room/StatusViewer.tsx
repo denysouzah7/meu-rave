@@ -15,6 +15,12 @@ export function StatusViewer({
   const [index, setIndex] = React.useState(initialIndex);
   const status = statuses[index];
 
+  React.useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
   const goNext = React.useCallback(() => {
     if (index < statuses.length - 1) setIndex((i) => i + 1);
     else onClose();
@@ -68,8 +74,8 @@ export function StatusViewer({
         </button>
       </div>
 
-      {/* Media area */}
-      <div className="relative flex flex-1 items-center justify-center">
+      {/* Media area - fills remaining space */}
+      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
         {isVideo ? (
           <video
             key={status.id}
@@ -94,13 +100,9 @@ export function StatusViewer({
           <button
             type="button"
             aria-label="Anterior"
-            className="absolute left-0 top-0 flex h-full w-1/3 items-center justify-start pl-2"
+            className="absolute left-0 top-0 flex h-full w-1/2 items-center justify-start pl-2 opacity-0 hover:opacity-100"
             onClick={goPrev}
-          >
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white">
-              <ChevronLeft className="h-6 w-6" />
-            </span>
-          </button>
+          />
         )}
 
         {/* Right tap zone */}
@@ -108,19 +110,15 @@ export function StatusViewer({
           <button
             type="button"
             aria-label="Proximo"
-            className="absolute right-0 top-0 flex h-full w-1/3 items-center justify-end pr-2"
+            className="absolute right-0 top-0 flex h-full w-1/2 items-center justify-end pr-2 opacity-0 hover:opacity-100"
             onClick={goNext}
-          >
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white">
-              <ChevronRight className="h-6 w-6" />
-            </span>
-          </button>
+          />
         )}
       </div>
 
       {/* Caption */}
       {status.caption && (
-        <div className="bg-gradient-to-t from-black/60 to-transparent px-6 pb-6 pt-12">
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-6 pb-6 pt-12">
           <p className="text-center text-sm text-white/90">{status.caption}</p>
         </div>
       )}
