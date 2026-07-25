@@ -164,6 +164,7 @@ export function ChatPanel({
   const [composerError, setComposerError] = React.useState("");
   const [selectedStickerMessage, setSelectedStickerMessage] =
     React.useState<ChatMessage | null>(null);
+  const [viewingImageUrl, setViewingImageUrl] = React.useState<string | null>(null);
   const messagesViewportRef = React.useRef<HTMLDivElement | null>(null);
   const messageBoxRef = React.useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -490,6 +491,7 @@ export function ChatPanel({
           }
           onPollVote={onPollVote}
           onUserClick={onUserClick}
+          onImageClick={(url) => setViewingImageUrl(url)}
         />
 
         {editingMessageId && (() => {
@@ -770,6 +772,28 @@ export function ChatPanel({
           }}
         />
       )}
+
+      {viewingImageUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black"
+          onClick={() => setViewingImageUrl(null)}
+        >
+          <button
+            type="button"
+            aria-label="Fechar"
+            className="absolute right-2 top-1 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 text-white/80"
+            onClick={() => setViewingImageUrl(null)}
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <img
+            src={viewingImageUrl}
+            alt="Imagem"
+            className="max-h-full max-w-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </Card>
   );
 }
@@ -793,6 +817,7 @@ type MessageListProps = {
   onOpenStickerDetails: (message: ChatMessage) => void;
   onPollVote: (pollId: string, optionId: string) => void;
   onUserClick?: ((userId: string) => void) | undefined;
+  onImageClick?: ((url: string) => void) | undefined;
 };
 
 const MessageList = React.memo(function MessageList({
@@ -814,6 +839,7 @@ const MessageList = React.memo(function MessageList({
   onOpenStickerDetails,
   onPollVote,
   onUserClick,
+  onImageClick,
 }: MessageListProps) {
   let previousDay = "";
 
@@ -866,6 +892,7 @@ const MessageList = React.memo(function MessageList({
                 onOpenStickerDetails={() => onOpenStickerDetails(message)}
                 onPollVote={onPollVote}
                 onUserClick={onUserClick}
+                onImageClick={onImageClick}
               />
             </React.Fragment>
           );
@@ -891,6 +918,7 @@ const MessageBubble = React.memo(function MessageBubble({
   onOpenStickerDetails,
   onPollVote,
   onUserClick,
+  onImageClick,
   ownedStickerIds,
 }: {
   message: ChatMessage;
@@ -908,6 +936,7 @@ const MessageBubble = React.memo(function MessageBubble({
   onOpenStickerDetails: () => void;
   onPollVote: (pollId: string, optionId: string) => void;
   onUserClick?: ((userId: string) => void) | undefined;
+  onImageClick?: ((url: string) => void) | undefined;
   ownedStickerIds: Set<string>;
 }) {
   const [dragX, setDragX] = React.useState(0);
@@ -1111,7 +1140,11 @@ const MessageBubble = React.memo(function MessageBubble({
                   src={resolveMediaUrl(message.imageUrl)}
                   alt={message.imageName ?? "Imagem enviada"}
                   loading="lazy"
-                  className="max-h-60 w-full object-contain sm:max-h-64"
+                  className="max-h-60 w-full cursor-pointer object-contain transition hover:opacity-90 sm:max-h-64"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (message.imageUrl) onImageClick?.(resolveMediaUrl(message.imageUrl));
+                  }}
                 />
               </div>
               {message.body && (
