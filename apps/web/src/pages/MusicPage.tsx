@@ -301,7 +301,7 @@ function CollectionContent({ songs, currentVideo, isPlaying, onPlay, isLoading, 
 
 function HomeCard({ item, onClick }: { item: MusicItem; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="group flex w-40 shrink-0 flex-col gap-2 text-left">
+    <button type="button" onClick={onClick} className="group flex w-36 sm:w-40 shrink-0 flex-col gap-2 text-left">
       <div className="relative aspect-square overflow-hidden rounded-lg bg-white/[0.06]">
         {item.thumbnail ? <CoverImg src={item.thumbnail} alt={item.name} className="h-full w-full object-cover transition group-hover:scale-105" /> : (
           <div className="flex h-full w-full items-center justify-center"><Disc3 className="h-8 w-8 text-muted-foreground" /></div>
@@ -317,7 +317,7 @@ function HomeCard({ item, onClick }: { item: MusicItem; onClick: () => void }) {
 function SearchRow({ item, onPlay }: { item: MusicItem; onPlay: () => void }) {
   return (
     <button type="button" onClick={onPlay} disabled={!item.id} className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition hover:bg-white/[0.06] disabled:opacity-50">
-      <div className="h-12 w-12 shrink-0 overflow-hidden rounded bg-white/[0.06]">
+      <div className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 overflow-hidden rounded bg-white/[0.06]">
         {item.thumbnail && <CoverImg src={item.thumbnail} alt="" className="h-full w-full object-cover" />}
       </div>
       <div className="min-w-0 flex-1">
@@ -355,9 +355,9 @@ function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev,
         </div>
 
         {/* Artwork + info */}
-        <div className="flex flex-1 flex-col items-center justify-center px-8">
-          <div className="w-full max-w-sm">
-            <div className="mb-8 aspect-square w-full overflow-hidden rounded-2xl bg-white/[0.06] shadow-2xl">
+        <div className="flex flex-1 flex-col items-center justify-center px-6 sm:px-8">
+          <div className="w-full max-w-xs sm:max-w-sm">
+            <div className="mb-6 sm:mb-8 aspect-square w-full overflow-hidden rounded-2xl bg-white/[0.06] shadow-2xl">
               {video.thumbnail ? (
                 <img src={video.thumbnail} alt="" className="h-full w-full object-cover" />
               ) : (
@@ -381,25 +381,25 @@ function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev,
 
             {/* Controls */}
             {isLoading && <div className="flex justify-center mb-6"><Loader2 className="h-6 w-6 animate-spin text-white/60" /></div>}
-            <div className="flex items-center justify-center gap-4">
-              <button type="button" onClick={onSkipBackward} className="flex h-10 w-10 items-center justify-center rounded-full text-white/50 hover:text-white">
-                <RotateCcw className="h-5 w-5" />
+            <div className="flex items-center justify-center gap-3 sm:gap-4">
+              <button type="button" onClick={onSkipBackward} className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full text-white/50 hover:text-white">
+                <RotateCcw className="h-4 w-4 sm:h-5 sm:w-5" />
               </button>
               {hasPrev && (
-                <button type="button" onClick={onPrev} className="flex h-10 w-10 items-center justify-center rounded-full text-white/60 hover:text-white">
-                  <SkipBack className="h-6 w-6" fill="currentColor" />
+                <button type="button" onClick={onPrev} className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full text-white/60 hover:text-white">
+                  <SkipBack className="h-5 w-5 sm:h-6 sm:w-6" fill="currentColor" />
                 </button>
               )}
-              <button type="button" onClick={onTogglePlay} className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-black shadow-lg transition hover:scale-105">
-                {isPlaying ? <Pause className="h-7 w-7" fill="currentColor" /> : <Play className="h-7 w-7" fill="currentColor" />}
+              <button type="button" onClick={onTogglePlay} className="flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-white text-black shadow-lg transition hover:scale-105">
+                {isPlaying ? <Pause className="h-6 w-6 sm:h-7 sm:w-7" fill="currentColor" /> : <Play className="h-6 w-6 sm:h-7 sm:w-7" fill="currentColor" />}
               </button>
               {hasNext && (
-                <button type="button" onClick={onNext} className="flex h-10 w-10 items-center justify-center rounded-full text-white/60 hover:text-white">
-                  <SkipForward className="h-6 w-6" fill="currentColor" />
+                <button type="button" onClick={onNext} className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full text-white/60 hover:text-white">
+                  <SkipForward className="h-5 w-5 sm:h-6 sm:w-6" fill="currentColor" />
                 </button>
               )}
-              <button type="button" onClick={onSkipForward} className="flex h-10 w-10 items-center justify-center rounded-full text-white/50 hover:text-white">
-                <RotateCw className="h-5 w-5" />
+              <button type="button" onClick={onSkipForward} className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full text-white/50 hover:text-white">
+                <RotateCw className="h-4 w-4 sm:h-5 sm:w-5" />
               </button>
             </div>
           </div>
@@ -413,9 +413,9 @@ function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev,
       <div className="h-1 w-full cursor-pointer bg-white/10" onClick={onSeek}>
         <div className="h-full bg-primary transition-all duration-300" style={{ width: `${pct}%` }} />
       </div>
-      <div className="mx-auto flex max-w-[1500px] items-center gap-3 px-4 py-2.5" onClick={onToggleExpand} style={{ cursor: "pointer" }}>
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          {video.thumbnail && <CoverImg src={video.thumbnail} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />}
+      <div className="mx-auto flex max-w-[1500px] items-center gap-2 sm:gap-3 px-2 sm:px-4 py-2 sm:py-2.5" onClick={onToggleExpand} style={{ cursor: "pointer" }}>
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+          {video.thumbnail && <CoverImg src={video.thumbnail} alt="" className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded object-cover" />}
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-white">{video.name}</p>
             {video.artist && <p className="truncate text-xs text-muted-foreground">{video.artist}</p>}
