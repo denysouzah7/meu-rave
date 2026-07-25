@@ -1,8 +1,7 @@
 import * as React from "react";
 import { Search, Play, X, Pause, ChevronLeft, SkipBack, SkipForward, Loader2, Disc3, RotateCcw, RotateCw, ChevronDown } from "lucide-react";
-import { useMusicHome, useMusicSearch, useAlbum, useArtistData, useYouTubeId, type MusicItem } from "@/hooks/useMusic";
+import { useMusicHome, useMusicSearch, useAlbum, useArtistData, type MusicItem } from "@/hooks/useMusic";
 import { useMusicPlayer, type PlayerSong } from "@/contexts/MusicPlayerContext";
-import { api } from "@/services/api";
 
 function CoverImg({ src, alt, className }: { src: string | null | undefined; alt: string; className: string }) {
   const [failed, setFailed] = React.useState(false);
@@ -20,61 +19,31 @@ export function MusicPage() {
   const [activeAlbumId, setActiveAlbumId] = React.useState<string | null>(null);
   const [activeArtistId, setActiveArtistId] = React.useState<string | null>(null);
   const [playerExpanded, setPlayerExpanded] = React.useState(false);
-  const [resolvingSong, setResolvingSong] = React.useState<PlayerSong | null>(null);
 
   const search = useMusicSearch(query);
   const albumData = useAlbum(activeAlbumId ?? "");
   const artistData = useArtistData(activeArtistId ?? "");
 
-  // YouTube ID resolution for playable songs
-  React.useEffect(() => {
-    if (!resolvingSong) return;
-    const { name, artist } = resolvingSong;
-    if (!name) { setResolvingSong(null); return; }
-    // defer to hook
-    const fetchId = async () => {
-      try {
-        const data = await api<{ videoId: string | null }>(`/music/youtube-id?name=${encodeURIComponent(name)}&artist=${encodeURIComponent(artist || "")}`);
-        if (data.videoId) {
-          player.play({ ...resolvingSong, id: data.videoId });
-        } else {
-          console.warn("No YouTube ID for:", name, artist);
-        }
-      } catch (e) {
-        console.warn("YouTube ID fetch failed:", name, e);
-      }
-      setResolvingSong(null);
-    };
-    fetchId();
-  }, [resolvingSong]);
-
-  // Album data effect
   React.useEffect(() => {
     if (albumData.data?.songs && activeAlbumId) setCollectionView({ songs: albumData.data.songs, name: collectionView?.name ?? "Album", thumbnail: collectionView?.thumbnail ?? null });
   }, [albumData.data, activeAlbumId]);
 
-  // Artist data effect
   React.useEffect(() => {
     if (artistData.data && activeArtistId) setCollectionView({ songs: artistData.data.songs, name: collectionView?.name ?? "Artista", thumbnail: collectionView?.thumbnail ?? null });
   }, [artistData.data, activeArtistId]);
 
-  /* Actions */
-  const playSong = (song: MusicItem, list?: MusicItem[]) => {
-    setResolvingSong({ id: "", name: song.name, artist: song.artist ?? "", thumbnail: song.thumbnail ?? "" });
-    if (list) {
-      // queue will be managed by player's play function - we just pass the current
-    }
-  };
+  const toPlayerSong = (item: MusicItem): PlayerSong => ({
+    id: item.id, name: item.name, thumbnail: item.thumbnail ?? "", previewUrl: (item as any).previewUrl,
+    ...(item.artist ? { artist: item.artist } : {}),
+  });
 
-  // Override play once resolved (handled in effect above via setResolvingSong -> player.play)
-  // For direct songs (from search with specific handling):
   const handleItemClick = (item: MusicItem, list?: MusicItem[]) => {
-    player.userGesture();
     if (item.type === "album" && item.id) { setActiveArtistId(null); setActiveAlbumId(item.id); setCollectionView({ songs: [], name: item.name, thumbnail: item.thumbnail ?? null }); }
     else if (item.type === "artist" && item.id) { setActiveAlbumId(null); setActiveArtistId(item.id); setCollectionView({ songs: [], name: item.name, thumbnail: item.thumbnail ?? null }); }
-    else if (item.id) {
-      // Need YouTube ID - resolve via backend
-      setResolvingSong({ id: "", name: item.name, artist: item.artist ?? "", thumbnail: item.thumbnail ?? "" });
+    else if (item.id && (item as any).previewUrl) {
+      const ps = toPlayerSong(item);
+      const plist = list?.filter(l => (l as any).previewUrl).map(toPlayerSong);
+      player.play(ps, plist);
     }
   };
 
@@ -117,47 +86,17 @@ export function MusicPage() {
 
       {/* Collection view */}
       {collectionView && (
-        <div className="space-y-4">
-          {!albumData.isFetched && !artistData.isFetched && <p className="text-sm text-muted-foreground">Carregando...</p>}
-          {(albumData.isFetched || artistData.isFetched) && collectionView.songs.length === 0 && <p className="text-sm text-muted-foreground pt-4 text-center">Nenhuma musica encontrada.</p>}
-          {collectionView.songs.length > 0 && (
-            <div className="space-y-1">
-              <h3 className="text-sm font-semibold text-white/70 px-1">Musicas</h3>
-              {collectionView.songs.map((song, i) => (
-                <button key={song.id ?? i} type="button" onClick={() => handleItemClick(song, collectionView.songs)}
-                  className={"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-white/[0.06]" + (player.current?.id === song.id ? " bg-primary/[0.12]" : "")}>
-                  <span className="w-6 shrink-0 text-center text-xs text-muted-foreground">
-                    {player.current?.id === song.id && player.isPlaying ? <span className="inline-block h-3 w-3 rounded-full bg-primary animate-pulse" /> : i + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className={"truncate text-sm" + (player.current?.id === song.id ? " text-primary" : " text-white")}>{song.name}</p>
-                    {song.artist && <p className="truncate text-xs text-muted-foreground">{song.artist}</p>}
-                  </div>
-                  {song.duration && <span className="shrink-0 text-xs text-muted-foreground">{Math.floor(song.duration / 60)}:{String(song.duration % 60).padStart(2, "0")}</span>}
-                </button>
-              ))}
-            </div>
-          )}
-          {activeArtistId && artistData.data?.albums && artistData.data.albums.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-white/70 px-1">Albuns</h3>
-              <div className="flex gap-3 overflow-x-auto pb-2 thin-scrollbar px-1">
-                {artistData.data.albums.map((album: MusicItem) => (
-                  <button key={album.id} type="button" onClick={() => handleItemClick(album)} className="group flex w-36 shrink-0 flex-col gap-2 text-left">
-                    <div className="relative aspect-square overflow-hidden rounded-lg bg-white/[0.06]">
-                      {album.thumbnail ? <CoverImg src={album.thumbnail} alt={album.name} className="h-full w-full object-cover transition group-hover:scale-105" /> : <div className="flex h-full w-full items-center justify-center"><Disc3 className="h-8 w-8 text-muted-foreground" /></div>}
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover:opacity-100"><Play className="h-8 w-8 text-white" fill="white" /></div>
-                    </div>
-                    <p className="line-clamp-2 text-xs font-medium leading-tight text-white">{album.name}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <CollectionContent
+          songs={collectionView.songs}
+          player={player}
+          activeArtistId={activeArtistId}
+          artistData={artistData.data}
+          handleItemClick={handleItemClick}
+          albumFetched={albumData.isFetched || artistData.isFetched}
+        />
       )}
 
-      {/* Search results */}
+      {/* Search */}
       {!collectionView && showSearch && query && (
         <div className="space-y-2">
           {search.isLoading && <p className="text-sm text-muted-foreground">Buscando...</p>}
@@ -185,12 +124,12 @@ export function MusicPage() {
         </>
       )}
 
-      {/* Mini / Expanded player */}
+      {/* Player */}
       {player.current && (
         <PlayerBar
           current={player.current}
           isPlaying={player.isPlaying}
-          isLoading={player.isLoading || !!resolvingSong}
+          isLoading={player.isLoading}
           position={player.position} duration={player.duration}
           hasPrev={player.queueIndex > 0} hasNext={player.queueIndex < player.queue.length - 1}
           expanded={playerExpanded}
@@ -208,7 +147,51 @@ export function MusicPage() {
   );
 }
 
-/* Components */
+function CollectionContent({ songs, player, activeArtistId, artistData, handleItemClick, albumFetched }: {
+  songs: MusicItem[]; player: any; activeArtistId: string | null; artistData: any; handleItemClick: (item: MusicItem, list?: MusicItem[]) => void; albumFetched: boolean;
+}) {
+  return (
+    <div className="space-y-4">
+      {!albumFetched && <p className="text-sm text-muted-foreground">Carregando...</p>}
+      {albumFetched && songs.length === 0 && <p className="text-sm text-muted-foreground pt-4 text-center">Nenhuma musica encontrada.</p>}
+      {songs.length > 0 && (
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-white/70 px-1">Musicas</h3>
+          {songs.filter(s => (s as any).previewUrl).map((song, i) => (
+            <button key={song.id ?? i} type="button" onClick={() => handleItemClick(song, songs)}
+              className={"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-white/[0.06]" + (player.current?.id === song.id ? " bg-primary/[0.12]" : "")}>
+              <span className="w-6 shrink-0 text-center text-xs text-muted-foreground">
+                {player.current?.id === song.id && player.isPlaying ? <span className="inline-block h-3 w-3 rounded-full bg-primary animate-pulse" /> : i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className={"truncate text-sm" + (player.current?.id === song.id ? " text-primary" : " text-white")}>{song.name}</p>
+                {song.artist && <p className="truncate text-xs text-muted-foreground">{song.artist}</p>}
+              </div>
+              {song.duration && <span className="shrink-0 text-xs text-muted-foreground">{Math.floor(song.duration / 60)}:{String(song.duration % 60).padStart(2, "0")}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      {activeArtistId && artistData?.albums && artistData.albums.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-white/70 px-1">Albuns</h3>
+          <div className="flex gap-3 overflow-x-auto pb-2 thin-scrollbar px-1">
+            {artistData.albums.map((album: MusicItem) => (
+              <button key={album.id} type="button" onClick={() => handleItemClick(album)} className="group flex w-36 shrink-0 flex-col gap-2 text-left">
+                <div className="relative aspect-square overflow-hidden rounded-lg bg-white/[0.06]">
+                  {album.thumbnail ? <CoverImg src={album.thumbnail} alt={album.name} className="h-full w-full object-cover transition group-hover:scale-105" /> : <div className="flex h-full w-full items-center justify-center"><Disc3 className="h-8 w-8 text-muted-foreground" /></div>}
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover:opacity-100"><Play className="h-8 w-8 text-white" fill="white" /></div>
+                </div>
+                <p className="line-clamp-2 text-xs font-medium leading-tight text-white">{album.name}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HomeCard({ item, onClick }: { item: MusicItem; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} className="group flex w-36 sm:w-40 shrink-0 flex-col gap-2 text-left">
