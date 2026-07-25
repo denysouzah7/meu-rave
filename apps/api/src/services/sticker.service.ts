@@ -1,10 +1,10 @@
-import { and, asc, eq, or } from "drizzle-orm";
+import { and, asc, desc, eq, ne, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { db } from "../database/client.js";
 import { stickerPacks, stickers, uploads, users } from "../database/schema.js";
 import { createId } from "../utils/id.js";
 import { now } from "../utils/dates.js";
-import { notFound } from "../utils/http.js";
+import { badRequest, notFound } from "../utils/http.js";
 
 const originalCreators = alias(users, "sticker_original_creators");
 
@@ -28,7 +28,7 @@ export function listStickerPacks(userId: string) {
     .select()
     .from(stickerPacks)
     .where(eq(stickerPacks.userId, userId))
-    .orderBy(asc(stickerPacks.createdAt))
+    .orderBy(desc(stickerPacks.updatedAt))
     .all();
 
   return packs.map((pack) => ({
@@ -150,6 +150,80 @@ export function deleteSticker(stickerId: string, userId: string) {
   return { ok: true };
 }
 
+export function updateStickerPack(packId: string, userId: string, name: string) {
+  const pack = db.select().from(stickerPacks).where(eq(stickerPacks.id, packId)).get();
+  if (!pack || pack.userId !== userId) {
+    throw notFound("Pacote de figurinhas nao encontrado");
+  }
+
+  if (!name.trim() || name.trim().length < 2 || name.trim().length > 60) {
+    throw badRequest("Nome do pacote deve ter entre 2 e 60 caracteres");
+  }
+
+  return db
+    .update(stickerPacks)
+    .set({ name: name.trim(), updatedAt: now() })
+    .where(eq(stickerPacks.id, packId))
+    .returning()
+    .get();
+}
+
+export function deleteStickerPack(packId: string, userId: string) {
+  const pack = db.select().from(stickerPacks).where(eq(stickerPacks.id, packId)).get();
+  if (!pack || pack.userId !== userId) {
+    throw notFound("Pacote de figurinhas nao encontrado");
+  }
+
+  const stickerCount = db
+    .select({ count: stickers.id })
+    .from(stickers)
+    .where(eq(stickers.packId, packId))
+    .all();
+
+  if (stickerCount.length > 0) {
+    throw badRequest("Remova todas as figurinhas antes de excluir o pacote");
+  }
+
+  db.delete(stickerPacks).where(eq(stickerPacks.id, packId)).run();
+  return { ok: true };
+}
+
+export function moveStickerToPack(stickerId: string, targetPackId: string, userId: string) {
+  const sticker = db.select().from(stickers).where(eq(stickers.id, stickerId)).get();
+  if (!sticker) {
+    throw notFound("Figurinha nao encontrada");
+  }
+
+  const currentPack = db
+    .select()
+    .from(stickerPacks)
+    .where(eq(stickerPacks.id, sticker.packId))
+    .get();
+  if (!currentPack || currentPack.userId !== userId) {
+    throw notFound("Figurinha nao encontrada");
+  }
+
+  const targetPack = db
+    .select()
+    .from(stickerPacks)
+    .where(eq(stickerPacks.id, targetPackId))
+    .get();
+  if (!targetPack || targetPack.userId !== userId) {
+    throw notFound("Pacote destino nao encontrado");
+  }
+
+  const timestamp = now();
+  db.update(stickers)
+    .set({ packId: targetPackId })
+    .where(eq(stickers.id, stickerId))
+    .run();
+
+  db.update(stickerPacks).set({ updatedAt: timestamp }).where(eq(stickerPacks.id, targetPackId)).run();
+  db.update(stickerPacks).set({ updatedAt: timestamp }).where(eq(stickerPacks.id, currentPack.id)).run();
+
+  return getStickerDto(stickerId) ?? { ok: true };
+}
+
 function getOrCreateDefaultStickerPack(userId: string) {
   const existing = db
     .select()
@@ -177,7 +251,7 @@ function listStickersForPack(packId: string) {
     .from(stickers)
     .leftJoin(originalCreators, eq(stickers.originalCreatorId, originalCreators.id))
     .where(eq(stickers.packId, packId))
-    .orderBy(asc(stickers.createdAt))
+    .orderBy(desc(stickers.createdAt))
     .all();
 }
 

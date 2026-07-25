@@ -12,6 +12,7 @@ import {
   Paperclip,
   Pause,
   Pin,
+  Pencil,
   Play,
   Plus,
   Reply,
@@ -161,6 +162,23 @@ export function ChatPanel({
     [messages],
   );
   const queryClient = useQueryClient();
+  const stickerPacksQuery = useStickerPacks();
+  const allPacks = stickerPacksQuery.data?.packs ?? [];
+  const ownedStickerIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    for (const pack of allPacks) {
+      for (const sticker of pack.stickers) {
+        ids.add(sticker.id);
+        if (sticker.sourceStickerId) ids.add(sticker.sourceStickerId);
+      }
+    }
+    return ids;
+  }, [allPacks]);
+  const isStickerAlreadySaved = React.useCallback(
+    (stickerId: string | null | undefined) =>
+      Boolean(stickerId && ownedStickerIds.has(stickerId)),
+    [ownedStickerIds],
+  );
   const saveSticker = useMutation({
     mutationFn: (stickerId: string) =>
       api<{ sticker: Sticker }>(`/stickers/${stickerId}/save`, {
@@ -307,6 +325,7 @@ export function ChatPanel({
           messageBackgroundStyle={messageBackgroundStyle}
           messagesViewportRef={messagesViewportRef}
           openActionsId={openActionsId}
+          ownedStickerIds={ownedStickerIds}
           onToggleActions={(id) =>
             setOpenActionsId((current) =>
               current === id ? null : id,
@@ -588,6 +607,7 @@ export function ChatPanel({
         <StickerDetailsDialog
           message={selectedStickerMessage}
           isSaving={saveSticker.isPending}
+          alreadySaved={isStickerAlreadySaved(selectedStickerMessage.stickerId)}
           onClose={() => setSelectedStickerMessage(null)}
           onSave={() => {
             if (!selectedStickerMessage.stickerId) return;
@@ -608,6 +628,7 @@ type MessageListProps = {
   messageBackgroundStyle: React.CSSProperties | undefined;
   messagesViewportRef: React.MutableRefObject<HTMLDivElement | null>;
   openActionsId: string | null;
+  ownedStickerIds: Set<string>;
   onToggleActions: (id: string) => void;
   onReply: (message: ChatMessage) => void;
   onCopy: (text: string | null | undefined) => void;
@@ -628,6 +649,7 @@ const MessageList = React.memo(function MessageList({
   messageBackgroundStyle,
   messagesViewportRef,
   openActionsId,
+  ownedStickerIds,
   onToggleActions,
   onReply,
   onCopy,
@@ -644,7 +666,7 @@ const MessageList = React.memo(function MessageList({
   return (
     <div
       ref={messagesViewportRef}
-      className="room-chat-messages room-wallpaper thin-scrollbar min-h-0 flex-1 overscroll-contain overflow-y-auto scroll-pb-4 p-3 pb-4"
+      className="room-chat-messages thin-scrollbar min-h-0 flex-1 overscroll-contain overflow-y-auto scroll-pb-4 p-3 pb-4"
       style={messageBackgroundStyle}
     >
       <div>
@@ -687,6 +709,7 @@ const MessageList = React.memo(function MessageList({
                 onDelete={() => onDelete(message.id)}
                 onPin={() => onPin(message.id, !message.isPinned)}
                 onSaveSticker={onSaveSticker}
+                ownedStickerIds={ownedStickerIds}
                 onOpenStickerDetails={() => onOpenStickerDetails(message)}
                 onPollVote={onPollVote}
                 onUserClick={onUserClick}
@@ -716,6 +739,7 @@ const MessageBubble = React.memo(function MessageBubble({
   onOpenStickerDetails,
   onPollVote,
   onUserClick,
+  ownedStickerIds,
 }: {
   message: ChatMessage;
   replyToMessage: ChatMessage | null;
@@ -733,6 +757,7 @@ const MessageBubble = React.memo(function MessageBubble({
   onOpenStickerDetails: () => void;
   onPollVote: (pollId: string, optionId: string) => void;
   onUserClick?: ((userId: string) => void) | undefined;
+  ownedStickerIds: Set<string>;
 }) {
   const [dragX, setDragX] = React.useState(0);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -745,7 +770,9 @@ const MessageBubble = React.memo(function MessageBubble({
   const canDelete = own || canModerate;
   const canCopy = Boolean(message.body);
   const canSaveSticker =
-    message.type === "sticker" && Boolean(message.stickerId);
+    message.type === "sticker" &&
+    Boolean(message.stickerId) &&
+    !ownedStickerIds.has(message.stickerId!);
   const dragDirection = own ? -1 : 1;
 
   const clearLongPress = () => {
@@ -914,7 +941,7 @@ const MessageBubble = React.memo(function MessageBubble({
             </div>
           )}
           {message.type === "sticker" && message.stickerUrl && (
-            <div className="rounded-xl bg-transparent p-0">
+            <div className="inline-block rounded-xl bg-transparent p-0">
               <button
                 type="button"
                 aria-label="Ver detalhes da figurinha"
@@ -931,6 +958,7 @@ const MessageBubble = React.memo(function MessageBubble({
                   className="max-h-32 max-w-[140px] rounded-lg object-contain"
                 />
               </button>
+              <MessageMeta message={message} own={own} sticker />
             </div>
           )}
           {message.type === "audio" && message.audioUrl && (
@@ -961,7 +989,7 @@ const MessageBubble = React.memo(function MessageBubble({
             <PollMessage poll={message.poll} own={own} onVote={onPollVote} />
           )}
 
-          {message.type !== "text" && (
+          {message.type !== "text" && message.type !== "sticker" && (
             <MessageMeta message={message} own={own} sticker={isSticker} />
           )}
 
@@ -1072,11 +1100,13 @@ function ReplySnippet({
 function StickerDetailsDialog({
   message,
   isSaving,
+  alreadySaved,
   onClose,
   onSave,
 }: {
   message: ChatMessage;
   isSaving: boolean;
+  alreadySaved: boolean;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -1136,18 +1166,20 @@ function StickerDetailsDialog({
             <Button variant="outline" className="flex-1" onClick={onClose}>
               Fechar
             </Button>
-            <Button
-              className="flex-1"
-              disabled={!message.stickerId || isSaving}
-              onClick={onSave}
-            >
-              {isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
-              Salvar
-            </Button>
+            {!alreadySaved && (
+              <Button
+                className="flex-1"
+                disabled={!message.stickerId || isSaving}
+                onClick={onSave}
+              >
+                {isSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                Salvar
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -1635,6 +1667,14 @@ function ActionIconButton({
 
 type StickerPackSummary = Omit<StickerPack, "stickers">;
 
+function getClickToSendSetting() {
+  try {
+    return localStorage.getItem("sticker-click-to-send") !== "false";
+  } catch {
+    return true;
+  }
+}
+
 function StickerTray({
   onPick,
   onClose,
@@ -1651,7 +1691,16 @@ function StickerTray({
   const [showPackForm, setShowPackForm] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [clickToSend, setClickToSend] = React.useState(getClickToSendSetting);
+  const [editingPack, setEditingPack] = React.useState<StickerPackSummary | null>(null);
+  const [editingPackName, setEditingPackName] = React.useState("");
+  const [stickerMenuOpen, setStickerMenuOpen] = React.useState<string | null>(null);
+  const [packMenuOpen, setPackMenuOpen] = React.useState<string | null>(null);
+  const [packToDelete, setPackToDelete] = React.useState<StickerPack | null>(null);
+  const [showSettings, setShowSettings] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement | null>(null);
+  const stickerMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const longPressTimerRef = React.useRef<number | null>(null);
   const packs = data?.packs ?? [];
   const firstPack = packs[0] ?? null;
   const selectedPack =
@@ -1659,11 +1708,34 @@ function StickerTray({
   const visibleStickers =
     selectedPack?.stickers ?? packs.flatMap((pack) => pack.stickers);
 
+  const invalidatePacks = () =>
+    queryClient.invalidateQueries({ queryKey: ["stickers", "packs"] });
+
   React.useEffect(() => {
     if (!selectedPackId && firstPack) {
       setSelectedPackId(firstPack.id);
     }
   }, [firstPack, selectedPackId]);
+
+  React.useEffect(() => {
+    const close = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-sticker-tray]")) return;
+      setStickerMenuOpen(null);
+      setPackMenuOpen(null);
+      setShowSettings(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
+
+  const toggleClickToSend = () => {
+    const next = !clickToSend;
+    setClickToSend(next);
+    try {
+      localStorage.setItem("sticker-click-to-send", String(next));
+    } catch { /* ignore */ }
+  };
 
   const createPackRequest = async (name: string) => {
     const result = await api<{ pack: StickerPackSummary }>("/stickers/packs", {
@@ -1679,13 +1751,88 @@ function StickerTray({
       setSelectedPackId(pack.id);
       setShowPackForm(false);
       setError("");
-      await queryClient.invalidateQueries({ queryKey: ["stickers", "packs"] });
+      await invalidatePacks();
     },
     onError: (packError) => {
       setError(
         packError instanceof Error
           ? packError.message
           : "Nao foi possivel criar o pacote.",
+      );
+    },
+  });
+
+  const renamePack = useMutation({
+    mutationFn: ({ packId, name }: { packId: string; name: string }) =>
+      api(`/stickers/packs/${packId}`, {
+        method: "PATCH",
+        json: { name },
+      }),
+    onSuccess: async () => {
+      setEditingPack(null);
+      setEditingPackName("");
+      setPackMenuOpen(null);
+      await invalidatePacks();
+    },
+    onError: (renameError) => {
+      setError(
+        renameError instanceof Error
+          ? renameError.message
+          : "Nao foi possivel renomear.",
+      );
+    },
+  });
+
+  const deletePack = useMutation({
+    mutationFn: (packId: string) =>
+      api(`/stickers/packs/${packId}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      setPackMenuOpen(null);
+      if (selectedPackId && packs.find((p) => p.id === selectedPackId)?.stickers.length === 0) {
+        setSelectedPackId(null);
+      }
+      await invalidatePacks();
+    },
+    onError: (deleteError) => {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Nao foi possivel excluir o pacote.",
+      );
+    },
+  });
+
+  const deleteSticker = useMutation({
+    mutationFn: (stickerId: string) =>
+      api(`/stickers/${stickerId}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      setStickerMenuOpen(null);
+      await invalidatePacks();
+    },
+    onError: (delError) => {
+      setError(
+        delError instanceof Error
+          ? delError.message
+          : "Nao foi possivel excluir a figurinha.",
+      );
+    },
+  });
+
+  const moveSticker = useMutation({
+    mutationFn: ({ stickerId, packId }: { stickerId: string; packId: string }) =>
+      api(`/stickers/${stickerId}/move`, {
+        method: "PATCH",
+        json: { packId },
+      }),
+    onSuccess: async () => {
+      setStickerMenuOpen(null);
+      await invalidatePacks();
+    },
+    onError: (moveError) => {
+      setError(
+        moveError instanceof Error
+          ? moveError.message
+          : "Nao foi possivel mover a figurinha.",
       );
     },
   });
@@ -1725,7 +1872,7 @@ function StickerTray({
           name: file.name.replace(/\.[a-z0-9]+$/i, ""),
         },
       });
-      await queryClient.invalidateQueries({ queryKey: ["stickers", "packs"] });
+      await invalidatePacks();
     } catch (uploadError) {
       setError(
         uploadError instanceof Error
@@ -1737,8 +1884,28 @@ function StickerTray({
     }
   };
 
+  const handleStickerClick = (sticker: Sticker) => {
+    clearLongPress();
+    if (clickToSend) {
+      onPick(sticker);
+    } else {
+      setStickerMenuOpen(sticker.id);
+    }
+  };
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const otherPacks = packs.filter((pack) => pack.id !== selectedPack?.id);
+  const activeSticker = visibleStickers.find((s) => s.id === stickerMenuOpen) ?? null;
+  const activePack = packs.find((p) => p.id === packMenuOpen) ?? null;
+
   return (
-    <div className="mx-2 mt-2 rounded-2xl border border-white/10 bg-[#111b21] p-2.5 shadow-2xl">
+    <div className="mx-2 mt-2 rounded-2xl border border-white/10 bg-[#111b21] p-2.5 shadow-2xl" data-sticker-tray>
       <input
         ref={fileRef}
         type="file"
@@ -1750,13 +1917,67 @@ function StickerTray({
       <div className="flex items-center gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-white">Figurinhas</p>
-          <p className="truncate text-[11px] text-[#aebac1]">
-            {selectedPack
-              ? selectedPack.name
-              : "Crie ou envie sua primeira figurinha"}
-          </p>
+          {editingPack ? (
+            <p className="truncate text-[11px] text-[#aebac1]">Renomeando...</p>
+          ) : (
+            <p className="truncate text-[11px] text-[#aebac1]">
+              {selectedPack
+                ? `${selectedPack.name} (${selectedPack.stickers.length})`
+                : "Crie ou envie sua primeira figurinha"}
+            </p>
+          )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1">
+          <div className="relative">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 rounded-full"
+              aria-label="Configurar figurinhas"
+              title="Configurar"
+              onClick={() => setShowSettings((v) => !v)}
+            >
+              <span className="text-sm font-bold text-[#aebac1]">
+                {clickToSend ? "\u2699" : "\u2699\uFE0F"}
+              </span>
+            </Button>
+            {showSettings && (
+              <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-xl border border-white/10 bg-[#182229] p-2 shadow-2xl"
+                   onPointerDown={(event) => event.stopPropagation()}>
+                <p className="px-2 pb-1 text-[10px] font-semibold uppercase text-[#8696a0]">
+                  Envio de figurinha
+                </p>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold transition hover:bg-white/[0.06]",
+                    clickToSend ? "text-[#e9edef]" : "text-[#e9edef]",
+                  )}
+                  onClick={() => {
+                    toggleClickToSend();
+                    setShowSettings(false);
+                  }}
+                >
+                  <Check className={cn("h-3.5 w-3.5", !clickToSend && "invisible")} />
+                  Enviar ao tocar
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold transition hover:bg-white/[0.06]",
+                    !clickToSend ? "text-[#e9edef]" : "text-[#e9edef]",
+                  )}
+                  onClick={() => {
+                    toggleClickToSend();
+                    setShowSettings(false);
+                  }}
+                >
+                  <Check className={cn("h-3.5 w-3.5", clickToSend && "invisible")} />
+                  Pedir confirmacao
+                </button>
+              </div>
+            )}
+          </div>
           <Button
             size="icon"
             variant="ghost"
@@ -1801,38 +2022,125 @@ function StickerTray({
       {packs.length > 0 && (
         <div className="thin-scrollbar mt-2 flex gap-1.5 overflow-x-auto pb-1">
           {packs.map((pack) => (
-            <button
-              key={pack.id}
-              type="button"
-              className={cn(
-                "h-8 shrink-0 rounded-full px-3 text-xs font-semibold transition",
-                selectedPack?.id === pack.id
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-[#202c33] text-[#aebac1] hover:bg-[#2a3942] hover:text-white",
-              )}
-              onClick={() => setSelectedPackId(pack.id)}
-            >
-              {pack.name}
-            </button>
+            <div key={pack.id} className="relative shrink-0">
+              <button
+                type="button"
+                className={cn(
+                  "h-8 rounded-full px-3 text-xs font-semibold transition",
+                  selectedPack?.id === pack.id
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-[#202c33] text-[#aebac1] hover:bg-[#2a3942] hover:text-white",
+                )}
+                onClick={() => {
+                  setSelectedPackId(pack.id);
+                  setPackMenuOpen(null);
+                }}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  clearLongPress();
+                  longPressTimerRef.current = window.setTimeout(() => {
+                    setPackMenuOpen(pack.id);
+                  }, 500);
+                }}
+                onPointerUp={clearLongPress}
+                onPointerLeave={clearLongPress}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setPackMenuOpen(pack.id);
+                }}
+              >
+                {pack.name}
+              </button>
+            </div>
           ))}
         </div>
       )}
 
-      {showPackForm && (
-        <div className="mt-2 flex gap-1.5 rounded-xl bg-[#202c33] p-1.5">
-          <Input
-            value={packName}
-            onChange={(event) => setPackName(event.target.value)}
+      {editingPack && (
+        <form
+          className="mt-2 flex gap-1.5 rounded-xl bg-[#202c33] p-1.5"
+          autoComplete="off"
+          onSubmit={(event) => {
+            event.preventDefault();
+            renamePack.mutate({ packId: editingPack.id, name: editingPackName });
+          }}
+        >
+          <textarea
+            rows={1}
+            value={editingPackName}
+            onChange={(event) => setEditingPackName(event.target.value)}
             placeholder="Nome do pacote"
-            className="h-9 min-w-0 flex-1 border-0 bg-transparent text-sm focus:ring-0"
+            className="h-9 min-w-0 flex-1 resize-none border-0 bg-transparent text-sm leading-9 text-foreground outline-none focus:ring-0"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            data-form-type="other"
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-bwignore="true"
           />
           <Button
+            type="submit"
+            size="icon"
+            variant="secondary"
+            className="h-9 w-9 shrink-0 rounded-full"
+            aria-label="Salvar"
+            disabled={renamePack.isPending}
+          >
+            {renamePack.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4" />
+            )}
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-9 w-9 shrink-0 rounded-full"
+            aria-label="Cancelar"
+            onClick={() => {
+              setEditingPack(null);
+              setEditingPackName("");
+            }}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </form>
+      )}
+
+      {showPackForm && (
+        <form
+          className="mt-2 flex gap-1.5 rounded-xl bg-[#202c33] p-1.5"
+          autoComplete="off"
+          onSubmit={(event) => {
+            event.preventDefault();
+            createPackFromInput();
+          }}
+        >
+          <textarea
+            rows={1}
+            value={packName}
+            onChange={(event) => setPackName(event.target.value)}
+            placeholder="Novo pacote"
+            className="h-9 min-w-0 flex-1 resize-none border-0 bg-transparent text-sm leading-9 text-foreground outline-none focus:ring-0"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            data-form-type="other"
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-bwignore="true"
+          />
+          <Button
+            type="submit"
             size="icon"
             variant="secondary"
             className="h-9 w-9 shrink-0 rounded-full"
             aria-label="Salvar pacote"
             disabled={createPack.isPending}
-            onClick={createPackFromInput}
           >
             {createPack.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -1840,7 +2148,7 @@ function StickerTray({
               <Check className="h-4 w-4" />
             )}
           </Button>
-        </div>
+        </form>
       )}
 
       {error && (
@@ -1863,24 +2171,227 @@ function StickerTray({
         ) : (
           <div className="thin-scrollbar grid max-h-40 grid-cols-5 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-8">
             {visibleStickers.map((sticker) => (
-              <button
-                key={sticker.id}
-                type="button"
-                aria-label={stickerMetaLabel(sticker)}
-                title={stickerMetaLabel(sticker)}
-                className="aspect-square min-h-0 rounded-xl bg-[#202c33] p-1.5 transition hover:bg-[#2a3942]"
-                onClick={() => onPick(sticker)}
-              >
-                <img
-                  src={resolveMediaUrl(sticker.imageUrl)}
-                  alt={sticker.name}
-                  className="h-full w-full rounded-lg object-contain"
-                />
-              </button>
+              <div key={sticker.id} className="relative">
+                <button
+                  type="button"
+                  aria-label={stickerMetaLabel(sticker)}
+                  title={stickerMetaLabel(sticker)}
+                  className="aspect-square min-h-0 w-full rounded-xl bg-[#202c33] p-1.5 transition hover:bg-[#2a3942]"
+                  onClick={() => handleStickerClick(sticker)}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    clearLongPress();
+                    longPressTimerRef.current = window.setTimeout(() => {
+                      setStickerMenuOpen(sticker.id);
+                    }, 500);
+                  }}
+                  onPointerUp={clearLongPress}
+                  onPointerLeave={clearLongPress}
+                  onPointerCancel={clearLongPress}
+                  onContextMenu={(event) => event.preventDefault()}
+                >
+                  <img
+                    src={resolveMediaUrl(sticker.imageUrl)}
+                    alt={sticker.name}
+                    className="h-full w-full rounded-lg object-contain"
+                  />
+                </button>
+              </div>
             ))}
           </div>
         )}
       </div>
+
+      {activeSticker && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setStickerMenuOpen(null)}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-t-2xl border-t border-white/10 bg-[#111b21] shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 border-b border-white/10 px-3 py-3">
+              <img
+                src={resolveMediaUrl(activeSticker.imageUrl)}
+                alt={activeSticker.name}
+                className="h-12 w-12 rounded-lg bg-[#202c33] object-contain p-1"
+              />
+              <p className="min-w-0 flex-1 truncate text-sm font-semibold text-white">
+                {activeSticker.name}
+              </p>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 rounded-full"
+                aria-label="Fechar"
+                onClick={() => setStickerMenuOpen(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-2">
+              {!clickToSend && (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[#e9edef] transition hover:bg-white/[0.06]"
+                  onClick={() => {
+                    onPick(activeSticker);
+                    setStickerMenuOpen(null);
+                  }}
+                >
+                  <Send className="h-4 w-4 text-primary" />
+                  Enviar figurinha
+                </button>
+              )}
+              {otherPacks.length > 0 && (
+                <p className="px-2 pt-2 text-[10px] font-semibold uppercase text-[#8696a0]">
+                  Mover para
+                </p>
+              )}
+              {otherPacks.map((pack) => (
+                <button
+                  key={pack.id}
+                  type="button"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#e9edef] transition hover:bg-white/[0.06]"
+                  onClick={() =>
+                    moveSticker.mutate({ stickerId: activeSticker.id, packId: pack.id })
+                  }
+                >
+                  <Plus className="h-3.5 w-3.5 text-[#aebac1]" />
+                  {pack.name}
+                </button>
+              ))}
+              <div className="my-1 border-t border-white/10" />
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-200 transition hover:bg-white/[0.06]"
+                onClick={() => deleteSticker.mutate(activeSticker.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Excluir figurinha
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activePack && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setPackMenuOpen(null)}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-t-2xl border-t border-white/10 bg-[#111b21] shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 border-b border-white/10 px-3 py-3">
+              <p className="min-w-0 flex-1 truncate text-sm font-semibold text-white">
+                {activePack.name}
+              </p>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 rounded-full"
+                aria-label="Fechar"
+                onClick={() => setPackMenuOpen(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-2">
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-[#e9edef] transition hover:bg-white/[0.06]"
+                onClick={() => {
+                  setEditingPack(activePack);
+                  setEditingPackName(activePack.name);
+                  setPackMenuOpen(null);
+                }}
+              >
+                <Pencil className="h-4 w-4 text-primary" />
+                Renomear pacote
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-200 transition hover:bg-white/[0.06]"
+                onClick={() => {
+                  setPackToDelete(activePack);
+                  setPackMenuOpen(null);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Excluir pacote
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {packToDelete && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPackToDelete(null)}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-2xl border border-white/10 bg-[#111b21] shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-red-500/20 text-red-300">
+                <Trash2 className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-white">
+                  Excluir pacote
+                </p>
+                <p className="truncate text-xs text-[#aebac1]">
+                  {packToDelete.name}
+                </p>
+              </div>
+            </div>
+            <div className="p-4">
+              <p className="text-sm leading-relaxed text-[#d1d7db]">
+                Tem certeza que deseja excluir este pacote? Esta acao nao pode
+                ser desfeita.
+              </p>
+              {packToDelete.stickers !== undefined && packToDelete.stickers.length > 0 && (
+                <p className="mt-2 rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs text-red-100">
+                  Remova todas as figurinhas do pacote antes de exclui-lo.
+                </p>
+              )}
+              <div className="mt-4 flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setPackToDelete(null)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  disabled={deletePack.isPending}
+                  onClick={() => {
+                    deletePack.mutate(packToDelete.id, {
+                      onSuccess: () => setPackToDelete(null),
+                    });
+                  }}
+                >
+                  {deletePack.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Excluir
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

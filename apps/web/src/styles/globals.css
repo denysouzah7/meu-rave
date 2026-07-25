@@ -87,8 +87,7 @@
   .room-panel-texture {
     background-color: #0b141a;
     background-image:
-      linear-gradient(135deg, rgba(249, 168, 212, 0.045), transparent 38%),
-      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 28px);
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.015) 0 1px, transparent 1px 28px);
   }
 
   .room-stage-texture {
@@ -118,20 +117,20 @@
 
   .thin-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: rgba(249, 168, 212, 0.55) rgba(255, 255, 255, 0.06);
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
   }
 
   .thin-scrollbar::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
 
   .thin-scrollbar::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.06);
+    background: transparent;
   }
 
   .thin-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(249, 168, 212, 0.55);
+    background: rgba(255, 255, 255, 0.15);
     border-radius: 8px;
   }
 

@@ -613,11 +613,11 @@ export function listStickerPacks(userId: string) {
     .select()
     .from(stickerPacks)
     .where(eq(stickerPacks.userId, userId))
-    .orderBy(asc(stickerPacks.createdAt))
+    .orderBy(desc(stickerPacks.updatedAt))
     .all();
 
   return packs.map((pack) => ({
     ...pack,
-    stickers: db.select().from(stickers).where(eq(stickers.packId, pack.id)).orderBy(asc(stickers.createdAt)).all()
+    stickers: db.select().from(stickers).where(eq(stickers.packId, pack.id)).orderBy(desc(stickers.createdAt)).all()
   }));
 }
