@@ -2,6 +2,7 @@ import * as React from "react";
 import {
   BarChart3,
   Check,
+  ChevronDown,
   Copy,
   Heart,
   ImagePlus,
@@ -933,7 +934,7 @@ const MessageBubble = React.memo(function MessageBubble({
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || isInteractiveTarget(event.target)) return;
     pointerStart.current = {
       x: event.clientX,
       y: event.clientY,
@@ -1141,6 +1142,22 @@ const MessageBubble = React.memo(function MessageBubble({
           {message.type !== "text" && message.type !== "sticker" && (
             <MessageMeta message={message} own={own} sticker={isSticker} />
           )}
+
+          <button
+            type="button"
+            aria-label="Opcoes da mensagem"
+            className={cn(
+              "absolute top-1 grid h-7 w-7 place-items-center rounded-full bg-black/15 text-[#d1d7db] opacity-0 transition hover:bg-black/25",
+              own ? "left-1" : "right-1",
+              "group-hover:opacity-100 group-focus-within:opacity-100",
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect();
+            }}
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>
@@ -2620,6 +2637,13 @@ function DayDivider({ value }: { value: string }) {
 function dayKey(value: string) {
   const date = new Date(value);
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function isInteractiveTarget(target: EventTarget) {
+  return (
+    target instanceof HTMLElement &&
+    Boolean(target.closest("button, a, input, textarea, select, audio"))
+  );
 }
 
 function dayLabel(value: string) {
