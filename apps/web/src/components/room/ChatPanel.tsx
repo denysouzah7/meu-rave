@@ -933,7 +933,7 @@ const MessageBubble = React.memo(function MessageBubble({
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || isInteractiveTarget(event.target)) return;
+    if (event.button !== 0) return;
     pointerStart.current = {
       x: event.clientX,
       y: event.clientY,
@@ -1100,7 +1100,6 @@ const MessageBubble = React.memo(function MessageBubble({
                   event.stopPropagation();
                   onOpenStickerDetails();
                 }}
-                onPointerDown={(event) => event.stopPropagation()}
               >
                 <img
                   src={resolveMediaUrl(message.stickerUrl)}
@@ -2621,13 +2620,6 @@ function DayDivider({ value }: { value: string }) {
 function dayKey(value: string) {
   const date = new Date(value);
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-}
-
-function isInteractiveTarget(target: EventTarget) {
-  return (
-    target instanceof HTMLElement &&
-    Boolean(target.closest("button, a, input, textarea, select, audio"))
-  );
 }
 
 function dayLabel(value: string) {
