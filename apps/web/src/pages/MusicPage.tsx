@@ -10,9 +10,9 @@ import {
 } from "@/hooks/useMusic";
 
 function CoverImg({ src, alt, className }: { src: string | null | undefined; alt: string; className: string }) {
-  const [imgSrc, setImgSrc] = React.useState<string | null>(src ? (String(src)) : null);
-  if (!imgSrc) return <div className={cn(className, "flex items-center justify-center bg-white/[0.06]")}><Disc3 className="h-8 w-8 text-muted-foreground" /></div>;
-  return <img src={imgSrc} alt={alt} loading="lazy" className={className} onError={() => setImgSrc(null)} />;
+  const [failed, setFailed] = React.useState(false);
+  if (!src || failed) return <div className={cn(className, "flex items-center justify-center bg-white/[0.04]")}><Disc3 className="h-6 w-6 text-muted-foreground/50" /></div>;
+  return <img src={src} alt={alt} loading="lazy" className={className} onError={(e) => { console.warn("CoverImg failed:", src.slice(0,80)); setFailed(true); }} />;
 }
 
 function cn(...classes: any[]) { return classes.filter(Boolean).join(" "); }
