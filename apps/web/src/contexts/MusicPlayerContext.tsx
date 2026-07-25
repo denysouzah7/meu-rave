@@ -88,7 +88,14 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
 
   const loadVideo = (videoId: string) => {
     setState(s => ({ ...s, isLoading: true }));
-    if (playerRef.current?.loadVideoById) playerRef.current.loadVideoById(videoId);
+    const tryLoad = () => {
+      if (playerRef.current?.loadVideoById) {
+        playerRef.current.loadVideoById(videoId);
+      } else {
+        setTimeout(tryLoad, 100);
+      }
+    };
+    tryLoad();
   };
 
   const autoNext = () => {

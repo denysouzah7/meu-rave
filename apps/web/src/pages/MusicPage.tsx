@@ -2,6 +2,7 @@ import * as React from "react";
 import { Search, Play, X, Pause, ChevronLeft, SkipBack, SkipForward, Loader2, Disc3, RotateCcw, RotateCw, ChevronDown } from "lucide-react";
 import { useMusicHome, useMusicSearch, useAlbum, useArtistData, useYouTubeId, type MusicItem } from "@/hooks/useMusic";
 import { useMusicPlayer, type PlayerSong } from "@/contexts/MusicPlayerContext";
+import { api } from "@/services/api";
 
 function CoverImg({ src, alt, className }: { src: string | null | undefined; alt: string; className: string }) {
   const [failed, setFailed] = React.useState(false);
@@ -33,8 +34,7 @@ export function MusicPage() {
     // defer to hook
     const fetchId = async () => {
       try {
-        const res = await fetch(`/api/music/youtube-id?name=${encodeURIComponent(name)}&artist=${encodeURIComponent(artist || "")}`);
-        const data = await res.json();
+        const data = await api<{ videoId: string | null }>(`/music/youtube-id?name=${encodeURIComponent(name)}&artist=${encodeURIComponent(artist || "")}`);
         if (data.videoId) {
           player.play({ ...resolvingSong, id: data.videoId });
         }
