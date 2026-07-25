@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Play, X, Pause, ChevronDown, SkipBack, SkipForward, Loader2, Disc3, RotateCcw, RotateCw } from "lucide-react";
 import { useMusicPlayer, type PlayerSong } from "@/contexts/MusicPlayerContext";
-import { api } from "@/services/api";
+import { api, API_URL } from "@/services/api";
 
 function CoverImg({ src, alt, className }: { src: string | null | undefined; alt: string; className: string }) {
   const [failed, setFailed] = React.useState(false);
@@ -41,7 +41,7 @@ export function MusicPlayerBar() {
       const audio = audioRef.current;
       if (!audio) return;
       setAudioLoading(true);
-      audio.src = `/api/music/stream/${ytId}`;
+      audio.src = `${API_URL}/api/music/stream/${ytId}`;
       audio.load();
       audio.play().then(() => {
         setAudioLoading(false);
