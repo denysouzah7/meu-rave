@@ -93,8 +93,11 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     const unlock = () => {
       if (unlocked || !playerRef.current?.playVideo) return;
       unlocked = true;
-      playerRef.current.playVideo();
-      playerRef.current.pauseVideo();
+      try {
+        playerRef.current.cueVideoById("dQw4w9WgXcQ");
+        playerRef.current.playVideo();
+        setTimeout(() => { try { playerRef.current?.stopVideo(); } catch {} }, 200);
+      } catch {}
       document.removeEventListener("click", unlock);
       document.removeEventListener("touchend", unlock);
     };
