@@ -1,7 +1,6 @@
 import * as React from "react";
 import {
   BarChart3,
-  ChevronDown,
   Check,
   Copy,
   Heart,
@@ -230,7 +229,11 @@ export function ChatPanel({
   }, [body]);
 
   React.useEffect(() => {
-    const closeActions = () => setSelectedMessageId(null);
+    const closeActions = (event: PointerEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest("[data-action-bar]")) return;
+      setSelectedMessageId(null);
+    };
     document.addEventListener("pointerdown", closeActions);
     return () => document.removeEventListener("pointerdown", closeActions);
   }, []);
@@ -362,7 +365,7 @@ export function ChatPanel({
           const canEdit = isOwn && msg.type === "text" && Date.now() - new Date(msg.createdAt).getTime() < 7 * 60 * 1000;
           const ownCanDelete = isOwn;
           return (
-            <div className="flex shrink-0 items-center justify-between border-b border-white/[0.04] bg-[#182229] px-4 py-2">
+            <div data-action-bar className="flex shrink-0 items-center justify-between border-b border-white/[0.04] bg-[#182229] px-4 py-2">
               {isOwn ? (
                 <div className="flex items-center gap-3">
                   {canEdit && (
@@ -1139,23 +1142,6 @@ const MessageBubble = React.memo(function MessageBubble({
           {message.type !== "text" && message.type !== "sticker" && (
             <MessageMeta message={message} own={own} sticker={isSticker} />
           )}
-
-          <button
-            type="button"
-            aria-label="Opcoes da mensagem"
-            className={cn(
-              "absolute top-1 grid h-7 w-7 place-items-center rounded-full bg-black/15 text-[#d1d7db] opacity-0 transition hover:bg-black/25",
-              own ? "left-1" : "right-1",
-              "group-hover:opacity-100 group-focus-within:opacity-100",
-            )}
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelect();
-            }}
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            <ChevronDown className="h-4 w-4" />
-          </button>
         </div>
       </div>
     </div>
