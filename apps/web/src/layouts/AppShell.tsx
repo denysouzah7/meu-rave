@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { GlobalRadioDock } from "@/components/radio/GlobalRadioDock";
 import { MusicPlayerProvider, useMusicPlayer } from "@/contexts/MusicPlayerContext";
+import { MusicPlayerBar } from "@/components/music/MusicPlayerBar";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -138,6 +139,7 @@ className={cn(
         </main>
       </div>
       {!isRoomRoute && <GlobalRadioDock />}
+      {!isRoomRoute && <MusicPlayerBar />}
 
       {!isRoomRoute && (
         <nav className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t border-white/10 bg-[#0b141a]/95 backdrop-blur-xl px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 lg:hidden">
