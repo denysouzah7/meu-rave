@@ -32,7 +32,6 @@ import { useMe, useRoom } from "@/hooks/useApi";
 import { WatchPlayer } from "@/components/room/WatchPlayer";
 import { ChatPanel } from "@/components/room/ChatPanel";
 import { ParticipantsPanel } from "@/components/room/ParticipantsPanel";
-import { RoomAdminPanel } from "@/components/room/RoomAdminPanel";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -552,22 +551,6 @@ export function RoomPage() {
           isGroup && "room-mobile-stack--group max-sm:pt-0",
         )}
       >
-        {participant?.canModerate && (
-          <RoomAdminPanel
-            room={room}
-            contents={contents}
-            activeContentId={activeContent?.id}
-            onReload={() => {
-              if (slug) socketRef.current?.emit("room:join", { slug });
-            }}
-            onActivate={(contentId) =>
-              socketRef.current?.emit("content:activate", { contentId })
-            }
-            onEndRoom={() => {
-              api(`/rooms/${room.id}/end`, { method: "POST" }).catch(() => {});
-            }}
-          />
-        )}
         {!isGroup && (
           <div
             className={cn(

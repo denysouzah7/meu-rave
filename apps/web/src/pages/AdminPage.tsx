@@ -2,8 +2,10 @@ import * as React from "react";
 import { Link, Navigate } from "react-router-dom";
 import {
   Ban,
+  Camera,
   Copy,
   Disc3,
+  Image,
   ImagePlus,
   Loader2,
   MessageCircle,
@@ -15,6 +17,7 @@ import {
   Trash2,
   UserCog,
   UsersRound,
+  X,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, resolveMediaUrl, uploadFile } from "@/services/api";
@@ -139,6 +142,14 @@ export function AdminPage() {
   const backgroundInputRef = React.useRef<HTMLInputElement | null>(null);
   const queryClient = useQueryClient();
   const { data: roomsData } = useRooms();
+  const [statusRoomId, setStatusRoomId] = React.useState<string | null>(null);
+  const [statuses, setStatuses] = React.useState<import("@/services/types").RoomStatus[]>([]);
+  const [statusUploading, setStatusUploading] = React.useState(false);
+  const [statusUploadId, setStatusUploadId] = React.useState<string | null>(null);
+  const [statusMediaType, setStatusMediaType] = React.useState<"image" | "video" | null>(null);
+  const [statusCaption, setStatusCaption] = React.useState("");
+  const statusImageRef = React.useRef<HTMLInputElement | null>(null);
+  const statusVideoRef = React.useRef<HTMLInputElement | null>(null);
 
   const usersQuery = useQuery({
     queryKey: ["admin", "users"],
@@ -917,6 +928,7 @@ export function AdminPage() {
               ) : (
                 <div className="grid gap-3">
                   {rooms.map((room) => (
+                    <React.Fragment key={room.id}>
                     <Card
                       key={room.id}
                       className="overflow-hidden border-white/10 bg-white/[0.03]"
@@ -1001,6 +1013,29 @@ export function AdminPage() {
                             Editar
                           </Button>
                           <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              if (statusRoomId === room.id) {
+                                setStatusRoomId(null);
+                                return;
+                              }
+                              setStatusRoomId(room.id);
+                              setStatusUploadId(null);
+                              setStatusMediaType(null);
+                              setStatusCaption("");
+                              try {
+                                const data = await api<{ statuses: import("@/services/types").RoomStatus[] }>(
+                                  `/rooms/${room.slug}/status`,
+                                );
+                                setStatuses(data.statuses);
+                              } catch { setStatuses([]); }
+                            }}
+                          >
+                            <Camera className="h-4 w-4" />
+                            Status
+                          </Button>
+                          <Button
                             variant={room.isActive ? "outline" : "secondary"}
                             size="sm"
                             onClick={async () => {
@@ -1033,6 +1068,100 @@ export function AdminPage() {
                         </div>
                       </CardContent>
                     </Card>
+                    {statusRoomId === room.id && (
+                      <div className="rounded-lg border border-primary/30 bg-primary/[0.06] p-4">
+                        <div className="flex items-center gap-3">
+                          {statusUploadId && statusMediaType ? (
+                            <div className="flex flex-1 items-center gap-2 rounded-lg bg-white/[0.06] px-3 py-2">
+                              {statusMediaType === "image" ? <Image className="h-4 w-4 text-primary" /> : <Camera className="h-4 w-4 text-primary" />}
+                              <span className="flex-1 text-sm">Midia selecionada</span>
+                              <button type="button" onClick={() => { setStatusUploadId(null); setStatusMediaType(null); }}>
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => statusImageRef.current?.click()} disabled={statusUploading}>
+                                <Image className="h-4 w-4" /> Foto
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => statusVideoRef.current?.click()} disabled={statusUploading}>
+                                <Camera className="h-4 w-4" /> Video
+                              </Button>
+                            </>
+                          )}
+                          <input ref={statusImageRef} type="file" accept="image/*" className="sr-only" onChange={async (e) => {
+                            const file = e.target.files?.[0]; if (!file) return;
+                            setStatusUploading(true);
+                            try {
+                              const result = await uploadFile("image", file);
+                              setStatusUploadId(result.upload.id);
+                              setStatusMediaType("image");
+                            } catch { alert("Erro upload"); }
+                            setStatusUploading(false);
+                          }} />
+                          <input ref={statusVideoRef} type="file" accept="video/*" className="sr-only" onChange={async (e) => {
+                            const file = e.target.files?.[0]; if (!file) return;
+                            const dur = await readVideoDuration(file);
+                            if (dur && dur > 120) { alert("Max 2 minutos"); return; }
+                            setStatusUploading(true);
+                            try {
+                              const result = await uploadFile("video", file);
+                              setStatusUploadId(result.upload.id);
+                              setStatusMediaType("video");
+                            } catch { alert("Erro upload"); }
+                            setStatusUploading(false);
+                          }} />
+                          <Input
+                            placeholder="Legenda"
+                            className="h-9 max-w-48"
+                            value={statusCaption}
+                            onChange={(e) => setStatusCaption(e.target.value)}
+                          />
+                          <Button size="sm" disabled={!statusUploadId || !statusMediaType || statusUploading} onClick={async () => {
+                            if (!statusUploadId || !statusMediaType) return;
+                            try {
+                              const data = await api<{ status: import("@/services/types").RoomStatus }>(
+                                `/rooms/${room.slug}/status`,
+                                { method: "POST", json: { uploadId: statusUploadId, type: statusMediaType, caption: statusCaption || undefined } },
+                              );
+                              setStatuses((prev) => [data.status, ...prev]);
+                              setStatusUploadId(null);
+                              setStatusMediaType(null);
+                              setStatusCaption("");
+                            } catch { alert("Erro ao criar status"); }
+                          }}>
+                            <Plus className="h-4 w-4" />
+                            Publicar
+                          </Button>
+                        </div>
+                        {statuses.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            {statuses.map((s) => (
+                              <div key={s.id} className="flex items-center gap-3 rounded-lg bg-white/[0.04] px-3 py-2">
+                                {s.type === "image" ? (
+                                  <img src={resolveMediaUrl(s.mediaUrl)} alt="" className="h-10 w-10 rounded object-cover" />
+                                ) : (
+                                  <video src={resolveMediaUrl(s.mediaUrl)} className="h-10 w-10 rounded object-cover" />
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  {s.caption && <p className="truncate text-sm">{s.caption}</p>}
+                                  <p className="text-[11px] text-muted-foreground">{new Date(s.createdAt).toLocaleString("pt-BR")}</p>
+                                </div>
+                                <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-red-400" onClick={async () => {
+                                  try {
+                                    await api(`/rooms/${room.slug}/status/${s.id}`, { method: "DELETE" });
+                                    setStatuses((prev) => prev.filter((x) => x.id !== s.id));
+                                  } catch { alert("Erro ao deletar"); }
+                                }}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    </React.Fragment>
                   ))}
                 </div>
               )}
@@ -1181,4 +1310,21 @@ export function AdminPage() {
       </Tabs>
     </div>
   );
+}
+
+function readVideoDuration(file: File) {
+  return new Promise<number | null>((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve(Number.isFinite(video.duration) && video.duration > 0 ? video.duration : null);
+    };
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    video.src = url;
+  });
 }
