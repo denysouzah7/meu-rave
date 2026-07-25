@@ -441,13 +441,18 @@ export function ChatPanel({
           )}
 
           {typingUsers && typingUsers.length > 0 && (
-            <div className="px-3 pb-1 pt-1">
-              <p className="text-[12.5px] italic leading-none text-[#8696a0]">
+            <div className="flex items-center gap-2 px-3 pb-1.5">
+              <div className="flex items-center gap-[3px] text-[#8696a0]">
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+              </div>
+              <p className="truncate text-[12.5px] text-[#8696a0]">
                 {typingUsers.length === 1
-                  ? `${typingUsers[0]} esta digitando...`
+                  ? `${typingUsers[0]} esta digitando`
                   : typingUsers.length === 2
-                    ? `${typingUsers[0]} e ${typingUsers[1]} estao digitando...`
-                    : `${typingUsers.slice(0, -1).join(", ")} e ${typingUsers[typingUsers.length - 1]} estao digitando...`}
+                    ? `${typingUsers[0]} e ${typingUsers[1]} estao digitando`
+                    : `${typingUsers[0]} e mais ${typingUsers.length - 1} pessoas estao digitando`}
               </p>
             </div>
           )}
