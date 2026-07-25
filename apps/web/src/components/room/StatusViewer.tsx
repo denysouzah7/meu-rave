@@ -76,14 +76,14 @@ export function StatusViewer({
             muted
             loop
             playsInline
-            className="max-h-full max-w-full"
+            className="h-full w-full object-contain"
           />
         ) : (
           <img
             key={status.id}
             src={resolveMediaUrl(status.mediaUrl)}
             alt={status.caption ?? "Status"}
-            className="max-h-full max-w-full object-contain"
+            className="h-full w-full object-contain"
           />
         )}
       </div>
