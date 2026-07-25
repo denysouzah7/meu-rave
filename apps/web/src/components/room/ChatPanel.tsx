@@ -2477,7 +2477,7 @@ function AudioRecorder({
       !navigator.mediaDevices?.getUserMedia ||
       typeof MediaRecorder === "undefined"
     ) {
-      onError("Este navegador nao permite gravar audio aqui.");
+      onError("");
       return;
     }
 
