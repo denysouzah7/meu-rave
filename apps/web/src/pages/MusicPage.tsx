@@ -11,8 +11,8 @@ import {
 
 function CoverImg({ src, alt, className }: { src: string | null | undefined; alt: string; className: string }) {
   const [failed, setFailed] = React.useState(false);
-  if (!src || failed) return <div className={cn(className, "flex items-center justify-center bg-white/[0.04]")}><Disc3 className="h-6 w-6 text-muted-foreground/50" /></div>;
-  return <img src={src} alt={alt} loading="lazy" className={className} onError={(e) => { console.warn("CoverImg failed:", src.slice(0,80)); setFailed(true); }} />;
+  if (!src || failed) return <div className={cn(className, "flex items-center justify-center bg-white/[0.08]")}><Disc3 className="h-5 w-5 text-primary/60" /></div>;
+  return <img src={src} alt={alt} loading="lazy" className={className} onError={() => setFailed(true)} />;
 }
 
 function cn(...classes: any[]) { return classes.filter(Boolean).join(" "); }
@@ -35,6 +35,16 @@ function loadYT(): Promise<void> {
 
 export function MusicPage() {
   const { data: homeData, isLoading } = useMusicHome();
+
+  React.useEffect(() => {
+    if (homeData?.sections) {
+      for (const s of homeData.sections) {
+        for (const c of (s.contents ?? []).slice(0, 2)) {
+          console.log(s.title, '|', c.type, '|', c.name?.slice(0,30), '| thumb:', c.thumbnail?.slice(0,50) ?? 'NULL');
+        }
+      }
+    }
+  }, [homeData]);
   const [query, setQuery] = React.useState("");
   const [showSearch, setShowSearch] = React.useState(false);
   const [currentVideo, setCurrentVideo] = React.useState<{ id: string; name: string; artist?: string; thumbnail?: string | null } | null>(null);
