@@ -76,7 +76,7 @@ export async function searchAll(query: string, limit = 30) {
   return mapped;
 }
 
-export async function getPlaylistVideos(playlistId: string) {
+export async function getPlaylistVideos(playlistId: string, fallbackName?: string) {
   const key = `playlist_${playlistId}`;
   const cached = getCached(key);
   if (cached) return cached;
@@ -85,12 +85,27 @@ export async function getPlaylistVideos(playlistId: string) {
   try {
     const playlist = await yt.getPlaylistVideos(playlistId);
     const mapped = (playlist ?? []).map(mapSong);
-    setCached(key, mapped);
-    return mapped;
+    if (mapped.length > 0) {
+      setCached(key, mapped);
+      return mapped;
+    }
   } catch (error) {
     console.error("getPlaylistVideos error:", playlistId, error);
-    return [];
   }
+
+  // Fallback: try searching by name
+  if (fallbackName) {
+    try {
+      console.log("fallback search for:", fallbackName);
+      const results = await yt.searchSongs(fallbackName);
+      const mapped = (results ?? []).slice(0, 20).map(mapSong);
+      setCached(key, mapped);
+      return mapped;
+    } catch {}
+  }
+
+  setCached(key, []);
+  return [];
 }
 
 export async function getAlbumSongs(albumId: string) {

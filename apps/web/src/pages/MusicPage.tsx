@@ -53,7 +53,7 @@ export function MusicPage() {
   const search = useMusicSearch(query);
   const [activePlaylistId, setActivePlaylistId] = React.useState<string | null>(null);
   const [activeAlbumId, setActiveAlbumId] = React.useState<string | null>(null);
-  const playlistData = useMusicPlaylist(activePlaylistId ?? "");
+  const playlistData = useMusicPlaylist(activePlaylistId ?? "", collectionView?.name ?? "");
   const albumData = useAlbumSongs(activeAlbumId ?? "");
 
   const playerRef = React.useRef<any>(null);
