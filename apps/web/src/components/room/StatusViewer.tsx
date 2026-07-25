@@ -59,7 +59,7 @@ export function StatusViewer({
 
       {/* Mídia */}
       <div
-        className="absolute inset-0 flex items-center justify-center"
+        className="absolute inset-0 overflow-hidden"
         onClick={(e) => {
           const w = e.currentTarget.offsetWidth;
           const x = e.clientX - e.currentTarget.getBoundingClientRect().left;
@@ -68,6 +68,14 @@ export function StatusViewer({
           else onClose();
         }}
       >
+        {/* Fundo borrado */}
+        {!isVideo && (
+          <img
+            src={resolveMediaUrl(status.mediaUrl)}
+            alt=""
+            className="absolute inset-0 h-full w-full scale-125 object-cover blur-2xl opacity-60"
+          />
+        )}
         {isVideo ? (
           <video
             key={status.id}
@@ -76,14 +84,14 @@ export function StatusViewer({
             muted
             loop
             playsInline
-            className="h-full w-full object-cover"
+            className="relative z-10 h-full w-full object-contain"
           />
         ) : (
           <img
             key={status.id}
             src={resolveMediaUrl(status.mediaUrl)}
             alt={status.caption ?? "Status"}
-            className="h-full w-full object-cover"
+            className="relative z-10 h-full w-full object-contain"
           />
         )}
       </div>
