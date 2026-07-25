@@ -34,14 +34,15 @@ export async function getHomeSections() {
 
     const genres = await dzFetch("/genre");
     const genreSections = await Promise.all(
-      genres.data.slice(0, 6).map(async (g: any) => {
+      genres.data.filter((g: any) => g.id !== 0).slice(0, 6).map(async (g: any) => {
         try {
-          const r = await dzFetch(`/genre/${g.id}/artists?limit=6`);
-          return { title: g.name, contents: (r.data ?? []).map((a: any) => ({
-              type: "artist" as const, id: String(a.id), name: a.name,
-              thumbnail: a.picture_medium ?? `https://api.deezer.com/artist/${a.id}/image`,
-              trackCount: a.nb_album,
-            })) };
+          const r = await dzFetch(`/search/track?q=${encodeURIComponent(g.name)}&limit=10`);
+          return { title: g.name, contents: (r.data ?? []).map((t: any) => ({
+            type: "song" as const, id: String(t.id), name: t.title || t.title_short, artist: t.artist?.name, artistId: String(t.artist?.id ?? ""),
+            album: t.album?.title, duration: t.duration,
+            thumbnail: t.album?.cover_medium ?? t.artist?.picture_medium ?? (t.artist?.id ? `https://api.deezer.com/artist/${t.artist.id}/image` : null),
+            previewUrl: t.preview,
+          })) };
         } catch {
           return null;
         }

@@ -35,16 +35,6 @@ function loadYT(): Promise<void> {
 
 export function MusicPage() {
   const { data: homeData, isLoading } = useMusicHome();
-
-  React.useEffect(() => {
-    if (homeData?.sections) {
-      for (const s of homeData.sections) {
-        for (const c of (s.contents ?? []).slice(0, 2)) {
-          console.log(s.title, '|', c.type, '|', c.name?.slice(0,30), '| thumb_type:', typeof c.thumbnail, '| isArray:', Array.isArray(c.thumbnail), '| thumb:', typeof c.thumbnail === 'string' ? c.thumbnail.slice(0,50) : (Array.isArray(c.thumbnail) ? `array[${(c.thumbnail as unknown[]).length}]` : 'NULL'));
-        }
-      }
-    }
-  }, [homeData]);
   const [query, setQuery] = React.useState("");
   const [showSearch, setShowSearch] = React.useState(false);
   const [currentVideo, setCurrentVideo] = React.useState<{ id: string; name: string; artist?: string; thumbnail?: string | null } | null>(null);
