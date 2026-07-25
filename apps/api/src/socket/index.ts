@@ -134,6 +134,18 @@ export function registerSocket(io: Server) {
       emitParticipants(io, roomId);
     });
 
+    socket.on("chat:typing", () => {
+      const roomId = socket.data.roomId;
+      if (!roomId) return;
+      const participants = listParticipants(roomId);
+      const found = participants.find((p) => p.userId === socket.data.userId);
+      const userName = found?.name ?? "Alguem";
+      socket.broadcast.to(channel(roomId)).emit("chat:typing", {
+        userId: socket.data.userId,
+        userName,
+      });
+    });
+
     socket.on(
       "chat:message",
       (payload: {

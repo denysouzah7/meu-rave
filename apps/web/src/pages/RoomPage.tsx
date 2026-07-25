@@ -95,6 +95,8 @@ export function RoomPage() {
   const [retentionInfoOpen, setRetentionInfoOpen] = React.useState(false);
   const [messagesHidden, setMessagesHidden] = React.useState(false);
   const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
+  const [typingUsers, setTypingUsers] = React.useState<Map<string, string>>(new Map());
+  const typingTimeoutsRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const roomViewportRef = React.useRef<HTMLElement | null>(null);
   const socketRef = React.useRef<Socket | null>(null);
   const roomRadioUrl =
@@ -287,10 +289,36 @@ export function RoomPage() {
       showToast(payload.message, "error");
     });
 
+    socket.on(
+      "chat:typing",
+      (payload: { userId: string; userName: string }) => {
+        const timeouts = typingTimeoutsRef.current;
+        if (timeouts.has(payload.userId)) {
+          clearTimeout(timeouts.get(payload.userId)!);
+        }
+        setTypingUsers((prev) => {
+          const next = new Map(prev);
+          next.set(payload.userId, payload.userName);
+          return next;
+        });
+        const timeout = setTimeout(() => {
+          setTypingUsers((prev) => {
+            const next = new Map(prev);
+            next.delete(payload.userId);
+            return next;
+          });
+          timeouts.delete(payload.userId);
+        }, 3000);
+        timeouts.set(payload.userId, timeout);
+      },
+    );
+
     return () => {
       socket.emit("room:leave");
       socket.disconnect();
       socketRef.current = null;
+      typingTimeoutsRef.current.forEach((t) => clearTimeout(t));
+      typingTimeoutsRef.current.clear();
     };
   }, [slug, participant?.id, applyPayload, showToast]);
 
@@ -543,6 +571,8 @@ export function RoomPage() {
               socket()?.emit("chat:pin", { messageId, isPinned })
             }
             onUserClick={(userId) => setSelectedUserId(userId)}
+            typingUsers={Array.from(typingUsers.values())}
+            onTyping={() => socketRef.current?.emit("chat:typing")}
           />
         )}
       </section>

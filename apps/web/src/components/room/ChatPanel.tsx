@@ -124,6 +124,8 @@ type Props = {
   onDelete: (messageId: string) => void;
   onPin: (messageId: string, isPinned: boolean) => void;
   onUserClick?: (userId: string) => void;
+  typingUsers?: string[];
+  onTyping?: () => void;
 };
 
 export function ChatPanel({
@@ -142,6 +144,8 @@ export function ChatPanel({
   onDelete,
   onPin,
   onUserClick,
+  typingUsers,
+  onTyping,
 }: Props) {
   const [body, setBody] = React.useState("");
   const [replyTo, setReplyTo] = React.useState<ChatMessage | null>(null);
@@ -157,6 +161,7 @@ export function ChatPanel({
   const messageBoxRef = React.useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = React.useRef<HTMLInputElement | null>(null);
   const touchSendHandledRef = React.useRef(false);
+  const lastTypingEmitRef = React.useRef(0);
   const messageById = React.useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
@@ -435,6 +440,18 @@ export function ChatPanel({
             </div>
           )}
 
+          {typingUsers && typingUsers.length > 0 && (
+            <div className="px-3 pb-1 pt-1">
+              <p className="text-[12.5px] italic leading-none text-[#8696a0]">
+                {typingUsers.length === 1
+                  ? `${typingUsers[0]} esta digitando...`
+                  : typingUsers.length === 2
+                    ? `${typingUsers[0]} e ${typingUsers[1]} estao digitando...`
+                    : `${typingUsers.slice(0, -1).join(", ")} e ${typingUsers[typingUsers.length - 1]} estao digitando...`}
+              </p>
+            </div>
+          )}
+
           <div className="p-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
             <input
               ref={imageInputRef}
@@ -464,7 +481,14 @@ export function ChatPanel({
                   ref={messageBoxRef}
                   rows={1}
                   value={body}
-                  onChange={(event) => setBody(event.target.value)}
+                  onChange={(event) => {
+                    setBody(event.target.value);
+                    const now = Date.now();
+                    if (now - lastTypingEmitRef.current > 2000) {
+                      lastTypingEmitRef.current = now;
+                      onTyping?.();
+                    }
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
