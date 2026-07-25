@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { RoomStatus } from "@/services/types";
 import { resolveMediaUrl } from "@/services/api";
 
@@ -46,36 +46,39 @@ export function StatusViewer({
   const isVideo = status.type === "video";
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black">
-      {/* Progress bars */}
-      <div className="absolute left-0 right-0 top-0 z-20 flex gap-1 px-2 pt-2">
+    <div className="fixed inset-0 z-50 bg-black select-none">
+      {/* Progress */}
+      <div className="absolute left-0 right-0 top-0 z-10 flex gap-0.5 px-1 pt-1">
         {statuses.map((s, i) => (
-          <div key={s.id} className="h-[3px] flex-1 rounded-full bg-white/30">
+          <div key={s.id} className="h-[2px] flex-1 rounded-full bg-white/25">
             <div
-              className="h-full rounded-full bg-white transition-[width] duration-300"
-              style={{
-                width: i < index ? "100%" : i === index ? "100%" : "0%",
-              }}
+              className="h-full rounded-full bg-white"
+              style={{ width: i <= index ? "100%" : "0%" }}
             />
           </div>
         ))}
       </div>
 
-      {/* Top bar */}
-      <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-2 pt-7">
-        <span />
-        <button
-          type="button"
-          aria-label="Fechar"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white"
-          onClick={onClose}
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
+      {/* Fechar */}
+      <button
+        type="button"
+        aria-label="Fechar"
+        className="absolute right-2 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 text-white/80"
+        onClick={onClose}
+      >
+        <X className="h-4 w-4" />
+      </button>
 
-      {/* Media area - fills remaining space */}
-      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+      {/* Mídia */}
+      <div
+        className="absolute inset-0 flex items-center justify-center"
+        onClick={(e) => {
+          const w = e.currentTarget.offsetWidth;
+          const x = e.clientX - e.currentTarget.getBoundingClientRect().left;
+          if (x < w / 3) goPrev();
+          else if (x > (w / 3) * 2) goNext();
+        }}
+      >
         {isVideo ? (
           <video
             key={status.id}
@@ -94,32 +97,12 @@ export function StatusViewer({
             className="max-h-full max-w-full object-contain"
           />
         )}
-
-        {/* Left tap zone */}
-        {index > 0 && (
-          <button
-            type="button"
-            aria-label="Anterior"
-            className="absolute left-0 top-0 flex h-full w-1/2 items-center justify-start pl-2 opacity-0 hover:opacity-100"
-            onClick={goPrev}
-          />
-        )}
-
-        {/* Right tap zone */}
-        {index < total - 1 && (
-          <button
-            type="button"
-            aria-label="Proximo"
-            className="absolute right-0 top-0 flex h-full w-1/2 items-center justify-end pr-2 opacity-0 hover:opacity-100"
-            onClick={goNext}
-          />
-        )}
       </div>
 
-      {/* Caption */}
+      {/* Legenda */}
       {status.caption && (
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-6 pb-6 pt-12">
-          <p className="text-center text-sm text-white/90">{status.caption}</p>
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent px-4 pb-4 pt-8">
+          <p className="text-center text-sm text-white/80">{status.caption}</p>
         </div>
       )}
     </div>
