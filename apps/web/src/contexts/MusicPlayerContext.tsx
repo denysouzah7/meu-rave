@@ -87,6 +87,25 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     return () => clearInterval(posInterval);
   }, []);
 
+  // Unlock audio on first user tap (mobile autoplay workaround)
+  React.useEffect(() => {
+    let unlocked = false;
+    const unlock = () => {
+      if (unlocked || !playerRef.current?.playVideo) return;
+      unlocked = true;
+      playerRef.current.playVideo();
+      playerRef.current.pauseVideo();
+      document.removeEventListener("click", unlock);
+      document.removeEventListener("touchend", unlock);
+    };
+    document.addEventListener("click", unlock);
+    document.addEventListener("touchend", unlock);
+    return () => {
+      document.removeEventListener("click", unlock);
+      document.removeEventListener("touchend", unlock);
+    };
+  }, []);
+
   const loadVideo = (videoId: string) => {
     setState(s => ({ ...s, isLoading: true }));
     const tryLoad = () => {
