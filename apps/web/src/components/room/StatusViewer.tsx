@@ -51,7 +51,7 @@ export function StatusViewer({
       <button
         type="button"
         aria-label="Fechar"
-        className="absolute right-2 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 text-white/80"
+        className="absolute right-2 top-1 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 text-white/80"
         onClick={onClose}
       >
         <X className="h-4 w-4" />
