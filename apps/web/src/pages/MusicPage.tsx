@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Search, Play, X, Pause, ChevronLeft, SkipBack, SkipForward, Loader2, Disc3, RotateCcw, RotateCw } from "lucide-react";
+import { Search, Play, X, Pause, ChevronLeft, SkipBack, SkipForward, Loader2, Disc3, RotateCcw, RotateCw, ChevronDown } from "lucide-react";
 import {
   useMusicHome,
   useMusicSearch,
@@ -46,6 +46,7 @@ export function MusicPage() {
   const [resolvingVideo, setResolvingVideo] = React.useState(false);
   const [position, setPosition] = React.useState(0);
   const [duration, setDuration] = React.useState(0);
+  const [playerExpanded, setPlayerExpanded] = React.useState(false);
   const [collectionView, setCollectionView] = React.useState<{ songs: MusicItem[]; name: string; thumbnail?: string | null } | null>(null);
   const [activeAlbumId, setActiveAlbumId] = React.useState<string | null>(null);
   const [activeArtistId, setActiveArtistId] = React.useState<string | null>(null);
@@ -241,6 +242,7 @@ export function MusicPage() {
         <MiniPlayer video={currentVideo} isPlaying={isPlaying} isLoading={isLoadingSong || resolvingVideo} onTogglePlay={togglePlay} onNext={playNext} hasPrev={hasPrev} hasNext={hasNext} onPrev={playPrev} onClose={onClose} videoId={videoId}
           position={position} duration={duration}
           onSkipForward={skipForward} onSkipBackward={skipBackward} onSeek={seekTo}
+          expanded={playerExpanded} onToggleExpand={() => setPlayerExpanded(!playerExpanded)}
         />
       )}
     </div>
@@ -329,27 +331,90 @@ function SearchRow({ item, onPlay }: { item: MusicItem; onPlay: () => void }) {
   );
 }
 
-function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev, onClose, hasPrev, hasNext, videoId, position, duration, onSkipForward, onSkipBackward, onSeek }: {
+function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev, onClose, hasPrev, hasNext, videoId, position, duration, onSkipForward, onSkipBackward, onSeek, expanded, onToggleExpand }: {
   video: { name: string; artist?: string; thumbnail?: string | null };
   isPlaying: boolean; isLoading: boolean; onTogglePlay: () => void; onNext: () => void; onPrev: () => void; onClose: () => void; hasPrev: boolean; hasNext: boolean; videoId: string | null;
   position: number; duration: number;
   onSkipForward: () => void; onSkipBackward: () => void; onSeek: (e: React.MouseEvent<HTMLDivElement>) => void;
+  expanded: boolean; onToggleExpand: () => void;
 }) {
-  React.useEffect(() => { document.body.style.paddingBottom = "80px"; return () => { document.body.style.paddingBottom = ""; }; }, []);
+  React.useEffect(() => { document.body.style.paddingBottom = expanded ? "0" : "80px"; return () => { document.body.style.paddingBottom = ""; }; }, [expanded]);
   const pct = duration > 0 ? (position / duration) * 100 : 0;
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+  if (expanded) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-[#0b141a]">
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-4 pt-4">
+          <button type="button" onClick={onToggleExpand} className="flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:text-white">
+            <ChevronDown className="h-6 w-6" />
+          </button>
+          <p className="text-xs font-semibold text-white/60">Tocando agora</p>
+          <span className="h-9 w-9" />
+        </div>
+
+        {/* Artwork + info */}
+        <div className="flex flex-1 flex-col items-center justify-center px-8">
+          <div className="w-full max-w-sm">
+            <div className="mb-8 aspect-square w-full overflow-hidden rounded-2xl bg-white/[0.06] shadow-2xl">
+              {video.thumbnail ? (
+                <img src={video.thumbnail} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center"><Disc3 className="h-20 w-20 text-muted-foreground/50" /></div>
+              )}
+            </div>
+
+            <div className="mb-6 min-w-0">
+              <p className="truncate text-xl font-bold text-white">{video.name}</p>
+              {video.artist && <p className="truncate text-sm text-muted-foreground">{video.artist}</p>}
+            </div>
+
+            {/* Progress */}
+            <div className="mb-2 h-1.5 w-full cursor-pointer rounded-full bg-white/10" onClick={onSeek}>
+              <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${pct}%` }} />
+            </div>
+            <div className="mb-8 flex justify-between text-xs text-muted-foreground">
+              <span>{formatTime(position)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+
+            {/* Controls */}
+            {isLoading && <div className="flex justify-center mb-6"><Loader2 className="h-6 w-6 animate-spin text-white/60" /></div>}
+            <div className="flex items-center justify-center gap-4">
+              <button type="button" onClick={onSkipBackward} className="flex h-10 w-10 items-center justify-center rounded-full text-white/50 hover:text-white">
+                <RotateCcw className="h-5 w-5" />
+              </button>
+              {hasPrev && (
+                <button type="button" onClick={onPrev} className="flex h-10 w-10 items-center justify-center rounded-full text-white/60 hover:text-white">
+                  <SkipBack className="h-6 w-6" fill="currentColor" />
+                </button>
+              )}
+              <button type="button" onClick={onTogglePlay} className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-black shadow-lg transition hover:scale-105">
+                {isPlaying ? <Pause className="h-7 w-7" fill="currentColor" /> : <Play className="h-7 w-7" fill="currentColor" />}
+              </button>
+              {hasNext && (
+                <button type="button" onClick={onNext} className="flex h-10 w-10 items-center justify-center rounded-full text-white/60 hover:text-white">
+                  <SkipForward className="h-6 w-6" fill="currentColor" />
+                </button>
+              )}
+              <button type="button" onClick={onSkipForward} className="flex h-10 w-10 items-center justify-center rounded-full text-white/50 hover:text-white">
+                <RotateCw className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#0b141a]/95 backdrop-blur-xl">
-      {/* Progress bar */}
       <div className="h-1 w-full cursor-pointer bg-white/10" onClick={onSeek}>
         <div className="h-full bg-primary transition-all duration-300" style={{ width: `${pct}%` }} />
       </div>
-
-      <div className="mx-auto flex max-w-[1500px] items-center gap-3 px-4 py-2.5">
-
-
-      {/* Capa + info */}
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="mx-auto flex max-w-[1500px] items-center gap-3 px-4 py-2.5" onClick={onToggleExpand} style={{ cursor: "pointer" }}>
+        <div className="flex min-w-0 flex-1 items-center gap-3" onClick={(e) => { e.stopPropagation(); }}>
           {video.thumbnail && <CoverImg src={video.thumbnail} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />}
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-white">{video.name}</p>
@@ -357,11 +422,8 @@ function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev,
             <p className="text-[10px] text-muted-foreground">{formatTime(position)} / {formatTime(duration)}</p>
           </div>
         </div>
-
         {isLoading && <Loader2 className="h-4 w-4 animate-spin text-white/60" />}
-
-        {/* Controls */}
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <button type="button" onClick={onSkipBackward} className="flex h-8 w-8 items-center justify-center rounded-full text-white/50 hover:text-white">
             <RotateCcw className="h-4 w-4" />
           </button>
