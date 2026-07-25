@@ -2,7 +2,7 @@ import * as React from "react";
 import {
   BarChart3,
   Check,
-  ChevronDown,
+  EllipsisVertical,
   Copy,
   Heart,
   ImagePlus,
@@ -917,7 +917,6 @@ const MessageBubble = React.memo(function MessageBubble({
     y: number;
     id: number;
   } | null>(null);
-  const longPressTimer = React.useRef<number | null>(null);
   const canDelete = own || canModerate;
   const canCopy = Boolean(message.body);
   const canSaveSticker =
@@ -926,13 +925,6 @@ const MessageBubble = React.memo(function MessageBubble({
     !ownedStickerIds.has(message.stickerId!);
   const dragDirection = own ? -1 : 1;
 
-  const clearLongPress = () => {
-    if (longPressTimer.current) {
-      window.clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  };
-
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || isInteractiveTarget(event.target)) return;
     pointerStart.current = {
@@ -940,12 +932,6 @@ const MessageBubble = React.memo(function MessageBubble({
       y: event.clientY,
       id: event.pointerId,
     };
-    longPressTimer.current = window.setTimeout(() => {
-      pointerStart.current = null;
-      setDragX(0);
-      setIsDragging(false);
-      onSelect();
-    }, 520);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -957,20 +943,20 @@ const MessageBubble = React.memo(function MessageBubble({
     const deltaY = Math.abs(event.clientY - pointerStart.current.y);
 
     if (deltaY > 28 && deltaX < 14) {
-      clearLongPress();
+      pointerStart.current = null;
       return;
     }
 
     const next = Math.max(0, Math.min(72, deltaX));
-    if (next > 6) {
-      clearLongPress();
+    if (next > 6 && !isDragging) {
       setIsDragging(true);
+    }
+    if (isDragging) {
       setDragX(next * dragDirection);
     }
   };
 
   const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
-    clearLongPress();
     const shouldReply = Math.abs(dragX) >= 46;
     pointerStart.current = null;
     setIsDragging(false);
@@ -1156,7 +1142,7 @@ const MessageBubble = React.memo(function MessageBubble({
               onSelect();
             }}
           >
-            <ChevronDown className="h-4 w-4" />
+            <EllipsisVertical className="h-4 w-4" />
           </button>
         </div>
       </div>
