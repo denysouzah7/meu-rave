@@ -25,7 +25,7 @@ async function dzFetch(path: string) {
 
 /* Home */
 export async function getHomeSections() {
-  return cached("dz_home", async () => {
+  return cached("dz_home_v2", async () => {
     const [tracksRes, albumsRes, chartTracks] = await Promise.all([
       dzFetch("/chart/0/tracks?limit=10"),
       dzFetch("/chart/0/albums?limit=10"),
@@ -37,7 +37,11 @@ export async function getHomeSections() {
       genres.data.slice(0, 6).map(async (g: any) => {
         try {
           const r = await dzFetch(`/genre/${g.id}/artists?limit=6`);
-          return { title: g.name, contents: (r.data ?? []).map(mapDzArtist) };
+          return { title: g.name, contents: (r.data ?? []).map((a: any) => ({
+              type: "artist" as const, id: String(a.id), name: a.name,
+              thumbnail: a.picture_medium ?? `https://api.deezer.com/artist/${a.id}/image`,
+              trackCount: a.nb_album,
+            })) };
         } catch {
           return null;
         }
@@ -45,9 +49,25 @@ export async function getHomeSections() {
     );
 
     return [
-      { title: "Top Brasil", contents: (tracksRes.data ?? []).map(mapDzTrack) },
-      { title: "Novos albuns", contents: (albumsRes.data ?? []).map(mapDzAlbum) },
-      { title: "Tendencias", contents: (chartTracks.data ?? []).slice(0, 10).map(mapDzTrack) },
+      { title: "Top Brasil", contents: (tracksRes.data ?? []).map((t: any) => ({
+        type: "song" as const, id: String(t.id), name: t.title || t.title_short,
+        artist: t.artist?.name, artistId: String(t.artist?.id ?? ""),
+        album: t.album?.title, duration: t.duration,
+        thumbnail: t.album?.cover_medium ?? t.artist?.picture_medium ?? (t.artist?.id ? `https://api.deezer.com/artist/${t.artist.id}/image` : null),
+        previewUrl: t.preview,
+      })) },
+      { title: "Novos albuns", contents: (albumsRes.data ?? []).map((a: any) => ({
+        type: "album" as const, id: String(a.id), name: a.title,
+        artist: a.artist?.name, thumbnail: a.cover_medium ?? `https://api.deezer.com/album/${a.id}/image`,
+        trackCount: a.nb_tracks,
+      })) },
+      { title: "Tendencias", contents: (chartTracks.data ?? []).slice(0, 10).map((t: any) => ({
+        type: "song" as const, id: String(t.id), name: t.title || t.title_short,
+        artist: t.artist?.name, artistId: String(t.artist?.id ?? ""),
+        album: t.album?.title, duration: t.duration,
+        thumbnail: t.album?.cover_medium ?? t.artist?.picture_medium ?? (t.artist?.id ? `https://api.deezer.com/artist/${t.artist.id}/image` : null),
+        previewUrl: t.preview,
+      })) },
       ...genreSections.filter(Boolean),
     ];
   });
@@ -62,9 +82,20 @@ export async function searchAll(q: string) {
       dzFetch(`/search/album?q=${encodeURIComponent(q)}&limit=5`),
     ]);
     return [
-      ...(tracks.data ?? []).map(mapDzTrack),
-      ...(albums.data ?? []).map(mapDzAlbum),
-      ...(artists.data ?? []).map(mapDzArtist),
+      ...(tracks.data ?? []).map((t: any) => ({
+        type: "song" as const, id: String(t.id), name: t.title || t.title_short, artist: t.artist?.name, artistId: String(t.artist?.id ?? ""),
+        album: t.album?.title, duration: t.duration,
+        thumbnail: t.album?.cover_medium ?? t.artist?.picture_medium ?? (t.artist?.id ? `https://api.deezer.com/artist/${t.artist.id}/image` : null),
+        previewUrl: t.preview,
+      })),
+      ...(albums.data ?? []).map((a: any) => ({
+        type: "album" as const, id: String(a.id), name: a.title, artist: a.artist?.name,
+        thumbnail: a.cover_medium ?? `https://api.deezer.com/album/${a.id}/image`, trackCount: a.nb_tracks,
+      })),
+      ...(artists.data ?? []).map((a: any) => ({
+        type: "artist" as const, id: String(a.id), name: a.name,
+        thumbnail: a.picture_medium ?? `https://api.deezer.com/artist/${a.id}/image`, trackCount: a.nb_album,
+      })),
     ];
   });
 }
@@ -73,7 +104,12 @@ export async function searchAll(q: string) {
 export async function getAlbum(albumId: string) {
   return cached(`dz_album_${albumId}`, async () => {
     const album = await dzFetch(`/album/${albumId}`);
-    return (album.tracks?.data ?? []).map((t: any) => mapDzTrack(t, album.title, album.cover_medium));
+    return (album.tracks?.data ?? []).map((t: any) => ({
+      type: "song" as const, id: String(t.id), name: t.title || t.title_short, artist: t.artist?.name, artistId: String(t.artist?.id ?? ""),
+      album: album.title, duration: t.duration,
+      thumbnail: album.cover_medium ?? t.artist?.picture_medium ?? (t.artist?.id ? `https://api.deezer.com/artist/${t.artist.id}/image` : null),
+      previewUrl: t.preview,
+    }));
   });
 }
 
@@ -85,8 +121,16 @@ export async function getArtistData(artistId: string) {
       dzFetch(`/artist/${artistId}/albums`),
     ]);
     return {
-      songs: (top.data ?? []).map(mapDzTrack),
-      albums: (albums.data ?? []).map(mapDzAlbum),
+      songs: (top.data ?? []).map((t: any) => ({
+        type: "song" as const, id: String(t.id), name: t.title || t.title_short, artist: t.artist?.name, artistId: String(t.artist?.id ?? ""),
+        album: t.album?.title, duration: t.duration,
+        thumbnail: t.album?.cover_medium ?? t.artist?.picture_medium ?? (t.artist?.id ? `https://api.deezer.com/artist/${t.artist.id}/image` : null),
+        previewUrl: t.preview,
+      })),
+      albums: (albums.data ?? []).map((a: any) => ({
+        type: "album" as const, id: String(a.id), name: a.title, artist: a.artist?.name,
+        thumbnail: a.cover_medium ?? `https://api.deezer.com/album/${a.id}/image`, trackCount: a.nb_tracks,
+      })),
     };
   });
 }
@@ -103,16 +147,7 @@ export async function getYouTubeId(trackName: string, artistName: string): Promi
   }
 }
 
-/* Convert multiple tracks at once */
-export async function getYouTubeIds(tracks: { name: string; artist: string }[]): Promise<Record<number, string | null>> {
-  const result: Record<number, string | null> = {};
-  await Promise.all(tracks.map(async (t, i) => {
-    result[i] = await getYouTubeId(t.name, t.artist);
-  }));
-  return result;
-}
-
-/* Mappers */
+/* Mappers - kept for backward compatibility, no longer used internally */
 function mapDzTrack(t: any, albumName?: string, albumCover?: string) {
   const artistId = t.artist?.id;
   return {

@@ -40,7 +40,7 @@ export function MusicPage() {
     if (homeData?.sections) {
       for (const s of homeData.sections) {
         for (const c of (s.contents ?? []).slice(0, 2)) {
-          console.log(s.title, '|', c.type, '|', c.name?.slice(0,30), '| thumb:', c.thumbnail?.slice(0,50) ?? 'NULL');
+          console.log(s.title, '|', c.type, '|', c.name?.slice(0,30), '| thumb_type:', typeof c.thumbnail, '| isArray:', Array.isArray(c.thumbnail), '| thumb:', typeof c.thumbnail === 'string' ? c.thumbnail.slice(0,50) : (Array.isArray(c.thumbnail) ? `array[${(c.thumbnail as unknown[]).length}]` : 'NULL'));
         }
       }
     }
