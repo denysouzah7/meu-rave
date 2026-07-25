@@ -59,7 +59,7 @@ export function StatusViewer({
 
       {/* Mídia */}
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 flex items-center justify-center"
         onClick={(e) => {
           const w = e.currentTarget.offsetWidth;
           const x = e.clientX - e.currentTarget.getBoundingClientRect().left;
@@ -76,14 +76,14 @@ export function StatusViewer({
             muted
             loop
             playsInline
-            className="h-full w-full object-cover"
+            className="max-h-full max-w-full"
           />
         ) : (
           <img
             key={status.id}
             src={resolveMediaUrl(status.mediaUrl)}
             alt={status.caption ?? "Status"}
-            className="h-full w-full object-cover"
+            className="max-h-full max-w-full object-contain"
           />
         )}
       </div>
