@@ -110,8 +110,8 @@ export function AppShell() {
         )}
 
         <main
-          className={cn(
-            "min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8",
+className={cn(
+             "min-w-0 flex-1 px-4 py-5 pb-20 sm:px-6 lg:px-8 lg:pb-6",
             isRoomRoute && "max-sm:h-full max-sm:min-h-0 max-sm:overflow-hidden max-sm:p-0 lg:h-full lg:min-h-0 lg:overflow-hidden lg:p-0"
           )}
         >
@@ -119,6 +119,26 @@ export function AppShell() {
         </main>
       </div>
       {!isRoomRoute && <GlobalRadioDock />}
+
+      {!isRoomRoute && (
+        <nav className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t border-white/10 bg-[#0b141a]/95 backdrop-blur-xl px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 lg:hidden">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                cn(
+                  "flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-medium text-muted-foreground transition",
+                  isActive && "text-primary"
+                )
+              }
+            >
+              <item.icon className="h-5 w-5" />
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+      )}
     </div>
   );
 }
