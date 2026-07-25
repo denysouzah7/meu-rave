@@ -2,25 +2,18 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/services/api";
 
 export type MusicItem = {
-  type: "song" | "artist" | "album" | "playlist";
-  videoId?: string;
+  type: "song" | "artist" | "album";
+  id: string;
   name: string;
   artist?: string;
   artistId?: string;
   album?: string;
   duration?: number;
   thumbnail?: string | null;
-  playlistId?: string;
-  albumId?: string;
+  previewUrl?: string;
+  videoId?: string;
+  trackCount?: number;
 };
-
-export function useAlbumSongs(albumId: string) {
-  return useQuery<{ songs: MusicItem[] }>({
-    queryKey: ["music", "album", albumId],
-    queryFn: () => api(`/music/album/${albumId}/songs`),
-    enabled: Boolean(albumId),
-  });
-}
 
 export type HomeSection = {
   title: string;
@@ -31,7 +24,7 @@ export function useMusicHome() {
   return useQuery<{ sections: HomeSection[] }>({
     queryKey: ["music", "home"],
     queryFn: () => api("/music/home"),
-    refetchInterval: 1000 * 60 * 30,
+    staleTime: 1000 * 60 * 30,
   });
 }
 
@@ -43,10 +36,26 @@ export function useMusicSearch(query: string) {
   });
 }
 
-export function useMusicPlaylist(playlistId: string) {
+export function useAlbum(id: string) {
   return useQuery<{ songs: MusicItem[] }>({
-    queryKey: ["music", "playlist", playlistId],
-    queryFn: () => api(`/music/playlist/${playlistId}`),
-    enabled: Boolean(playlistId),
+    queryKey: ["music", "album", id],
+    queryFn: () => api(`/music/album/${id}`),
+    enabled: Boolean(id),
+  });
+}
+
+export function useArtistTop(id: string) {
+  return useQuery<{ songs: MusicItem[] }>({
+    queryKey: ["music", "artist", id],
+    queryFn: () => api(`/music/artist/${id}/top`),
+    enabled: Boolean(id),
+  });
+}
+
+export function useYouTubeId(name: string, artist: string) {
+  return useQuery<{ videoId: string | null }>({
+    queryKey: ["music", "ytid", name, artist],
+    queryFn: () => api(`/music/youtube-id?name=${encodeURIComponent(name)}&artist=${encodeURIComponent(artist)}`),
+    enabled: Boolean(name),
   });
 }

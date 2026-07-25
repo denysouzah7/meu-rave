@@ -3,8 +3,8 @@ import { Search, Play, X, Pause, ChevronLeft, SkipBack, SkipForward, Loader2, Di
 import {
   useMusicHome,
   useMusicSearch,
-  useMusicPlaylist,
-  useAlbumSongs,
+  useAlbum,
+  useYouTubeId,
   type MusicItem,
 } from "@/hooks/useMusic";
 
@@ -41,20 +41,23 @@ export function MusicPage() {
   const { data: homeData, isLoading } = useMusicHome();
   const [query, setQuery] = React.useState("");
   const [showSearch, setShowSearch] = React.useState(false);
-  const [currentVideo, setCurrentVideo] = React.useState<MusicItem | null>(null);
+  const [currentVideo, setCurrentVideo] = React.useState<{ id: string; name: string; artist?: string; thumbnail?: string | null } | null>(null);
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [isLoadingSong, setIsLoadingSong] = React.useState(false);
   const [queue, setQueue] = React.useState<MusicItem[]>([]);
   const [queueIndex, setQueueIndex] = React.useState(0);
+  const [videoId, setVideoId] = React.useState<string | null>(null);
+  const [resolvingVideo, setResolvingVideo] = React.useState(false);
 
   const [collectionView, setCollectionView] = React.useState<{ songs: MusicItem[]; name: string; thumbnail?: string | null } | null>(null);
-  const [fetchingPlaylist, setFetchingPlaylist] = React.useState(false);
+  const [activeAlbumId, setActiveAlbumId] = React.useState<string | null>(null);
+  const albumData = useAlbum(activeAlbumId ?? "");
 
   const search = useMusicSearch(query);
-  const [activePlaylistId, setActivePlaylistId] = React.useState<string | null>(null);
-  const [activeAlbumId, setActiveAlbumId] = React.useState<string | null>(null);
-  const playlistData = useMusicPlaylist(activePlaylistId ?? "");
-  const albumData = useAlbumSongs(activeAlbumId ?? "");
+  const ytQuery = useYouTubeId(
+    queue[queueIndex]?.name ?? "",
+    queue[queueIndex]?.artist ?? ""
+  );
 
   const playerRef = React.useRef<any>(null);
   const playerDivRef = React.useRef<HTMLDivElement | null>(null);
@@ -68,75 +71,76 @@ export function MusicPage() {
         height: "1", width: "1",
         playerVars: { autoplay: 0, controls: 0, disablekb: 1, modestbranding: 1 },
         events: {
-          onReady: () => { if (pendingVideoIdRef.current) { playerRef.current.loadVideoById(pendingVideoIdRef.current); pendingVideoIdRef.current = null; } },
+          onReady: () => {
+            if (pendingVideoIdRef.current) {
+              playerRef.current.loadVideoById(pendingVideoIdRef.current);
+              pendingVideoIdRef.current = null;
+            }
+          },
           onStateChange: (e: any) => {
             const YT = window.YT; if (!YT) return;
             if (e.data === YT.PlayerState.PLAYING) { setIsPlaying(true); setIsLoadingSong(false); }
             else if (e.data === YT.PlayerState.PAUSED) setIsPlaying(false);
-            else if (e.data === YT.PlayerState.ENDED) handleEnded();
+            else if (e.data === YT.PlayerState.ENDED) playNextRef.current();
             else if (e.data === YT.PlayerState.BUFFERING) setIsLoadingSong(true);
           },
-          onError: () => { setIsLoadingSong(false); handleEnded(); },
+          onError: () => { setIsLoadingSong(false); playNextRef.current(); },
         },
       });
     });
   }, []);
 
-  const handleEnded = React.useCallback(() => {
-    const { queue: q, index } = queueRef.current;
-    if (index < q.length - 1) {
-      const next = q[index + 1];
-      if (!next?.videoId) return;
-      setCurrentVideo(next); setQueueIndex(index + 1);
-      queueRef.current = { queue: q, index: index + 1 };
-      if (playerRef.current?.loadVideoById) playerRef.current.loadVideoById(next.videoId);
-      else pendingVideoIdRef.current = next.videoId;
-    } else setIsPlaying(false);
-  }, []);
-
-  const loadVideo = (videoId: string) => {
-    setIsLoadingSong(true);
-    if (playerRef.current?.loadVideoById) playerRef.current.loadVideoById(videoId);
-    else pendingVideoIdRef.current = videoId;
-  };
-
+  // When user clicks play, fetch YouTube videoId
   const playSong = (song: MusicItem, list?: MusicItem[]) => {
-    if (!song.videoId) return;
+    if (!song.id) return;
     const q = list ?? [song];
-    const idx = q.findIndex((s) => s.videoId === song.videoId);
+    const idx = q.findIndex((s) => s.id === song.id);
     setQueue(q); setQueueIndex(idx >= 0 ? idx : 0);
     queueRef.current = { queue: q, index: idx >= 0 ? idx : 0 };
-    setCurrentVideo(song); setIsPlaying(true);
-    loadVideo(song.videoId);
+    setCurrentVideo({ id: song.id, name: song.name, artist: song.artist ?? "", thumbnail: song.thumbnail ?? "" });
+    setResolvingVideo(true);
   };
 
-  const openPlaylist = (playlistId: string, name: string, thumbnail?: string | null) => {
-    setFetchingPlaylist(true);
-    setActivePlaylistId(playlistId);
-    setActiveAlbumId(null);
-    setCollectionView({ songs: [], name, thumbnail: thumbnail ?? null });
-  };
-
-  const openAlbum = (albumId: string, name: string, thumbnail?: string | null) => {
-    setFetchingPlaylist(true);
-    setActiveAlbumId(albumId);
-    setActivePlaylistId(null);
-    setCollectionView({ songs: [], name, thumbnail: thumbnail ?? null });
-  };
-
+  // YouTube ID resolved
   React.useEffect(() => {
-    if (playlistData.data?.songs && activePlaylistId) {
-      setCollectionView({ songs: playlistData.data.songs, name: collectionView?.name ?? "Playlist", thumbnail: collectionView?.thumbnail ?? null });
-      setFetchingPlaylist(false);
+    if (ytQuery.data?.videoId) {
+      setVideoId(ytQuery.data.videoId);
+      setResolvingVideo(false);
+      setIsLoadingSong(true);
+      if (playerRef.current?.loadVideoById) {
+        playerRef.current.loadVideoById(ytQuery.data.videoId);
+      } else {
+        pendingVideoIdRef.current = ytQuery.data.videoId;
+      }
+    } else if (ytQuery.isFetched && !ytQuery.data?.videoId) {
+      setResolvingVideo(false);
     }
-  }, [playlistData.data, activePlaylistId]);
+  }, [ytQuery.data, ytQuery.isFetched]);
+
+  // Album
+  const openAlbum = (id: string, name: string, thumbnail?: string | null) => {
+    setActiveAlbumId(id);
+    setCollectionView({ songs: [], name, thumbnail: thumbnail ?? null });
+  };
 
   React.useEffect(() => {
     if (albumData.data?.songs && activeAlbumId) {
       setCollectionView({ songs: albumData.data.songs, name: collectionView?.name ?? "Album", thumbnail: collectionView?.thumbnail ?? null });
-      setFetchingPlaylist(false);
     }
   }, [albumData.data, activeAlbumId]);
+
+  const handleEnded = React.useCallback(() => {
+    const { queue: q, index } = queueRef.current;
+    if (index < q.length - 1) {
+      const next = q[index + 1];
+      setQueueIndex(index + 1);
+      queueRef.current = { queue: q, index: index + 1 };
+      playSong(next!, q);
+    } else setIsPlaying(false);
+  }, []);
+
+  const playNextRef = React.useRef(() => {});
+  const playPrevRef = React.useRef(() => {});
 
   const togglePlay = () => {
     if (!playerRef.current) return;
@@ -148,10 +152,10 @@ export function MusicPage() {
     const { queue: q, index } = queueRef.current;
     if (index < q.length - 1) {
       const next = q[index + 1];
-      if (!next?.videoId) return;
-      setCurrentVideo(next); setQueueIndex(index + 1);
+      if (!next) return;
+      setQueueIndex(index + 1);
       queueRef.current = { queue: q, index: index + 1 };
-      loadVideo(next.videoId);
+      playSong(next, q);
     }
   };
 
@@ -159,16 +163,19 @@ export function MusicPage() {
     const { queue: q, index } = queueRef.current;
     if (index > 0) {
       const prev = q[index - 1];
-      if (!prev?.videoId) return;
-      setCurrentVideo(prev); setQueueIndex(index - 1);
+      if (!prev) return;
+      setQueueIndex(index - 1);
       queueRef.current = { queue: q, index: index - 1 };
-      loadVideo(prev.videoId);
+      playSong(prev, q);
     }
   };
 
+  playNextRef.current = playNext;
+  playPrevRef.current = handleEnded;
+
   const onClose = () => {
     playerRef.current?.stopVideo();
-    setCurrentVideo(null); setIsPlaying(false); setQueue([]); setQueueIndex(0);
+    setCurrentVideo(null); setIsPlaying(false); setQueue([]); setQueueIndex(0); setVideoId(null);
     queueRef.current = { queue: [], index: 0 };
   };
 
@@ -179,11 +186,10 @@ export function MusicPage() {
     <div className="space-y-6 pb-24">
       <div ref={playerDivRef} style={{ position: "absolute", left: -9999, top: -9999, width: 1, height: 1, opacity: 0, pointerEvents: "none" }} />
 
-      {/* Header */}
       <div className="flex items-center gap-4">
         {collectionView ? (
           <>
-            <button type="button" onClick={() => { setCollectionView(null); setActivePlaylistId(null); setActiveAlbumId(null); }} className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10">
+            <button type="button" onClick={() => { setCollectionView(null); setActiveAlbumId(null); }} className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10">
               <ChevronLeft className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -215,35 +221,27 @@ export function MusicPage() {
         )}
       </div>
 
-      {/* Collection view - tracks list */}
+      {/* Collection view */}
       {collectionView && (
         <div className="space-y-1">
-          {fetchingPlaylist && <p className="text-sm text-muted-foreground">Carregando musicas...</p>}
-          {!fetchingPlaylist && collectionView.songs.length === 0 && (
-            <div className="flex flex-col items-center gap-3 pt-8 text-center">
-              <p className="text-sm text-muted-foreground">Playlist temporariamente indisponivel.</p>
-              <p className="text-xs text-muted-foreground/60">Tente buscar por &quot;{collectionView.name}&quot; na pesquisa.</p>
-            </div>
-          )}
+          {!albumData.isFetched && <p className="text-sm text-muted-foreground">Carregando...</p>}
+          {albumData.isFetched && collectionView.songs.length === 0 && <p className="text-sm text-muted-foreground pt-4 text-center">Nenhuma musica encontrada.</p>}
           {collectionView.songs.map((song, i) => (
             <button
-              key={song.videoId ?? i}
+              key={song.id ?? i}
               type="button"
               onClick={() => playSong(song, collectionView.songs)}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-white/[0.06]",
-                currentVideo?.videoId === song.videoId && "bg-primary/[0.12]"
-              )}
+              className={"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-white/[0.06]" + (currentVideo?.id === song.id ? " bg-primary/[0.12]" : "")}
             >
               <span className="w-6 shrink-0 text-center text-xs text-muted-foreground">
-                {currentVideo?.videoId === song.videoId && isPlaying ? (
+                {currentVideo?.id === song.id && isPlaying ? (
                   <span className="inline-block h-3 w-3 rounded-full bg-primary animate-pulse" />
                 ) : (
                   i + 1
                 )}
               </span>
               <div className="min-w-0 flex-1">
-                <p className={cn("truncate text-sm", currentVideo?.videoId === song.videoId ? "text-primary" : "text-white")}>{song.name}</p>
+                <p className={"truncate text-sm" + (currentVideo?.id === song.id ? " text-primary" : " text-white")}>{song.name}</p>
                 {song.artist && <p className="truncate text-xs text-muted-foreground">{song.artist}</p>}
               </div>
               {song.duration && (
@@ -259,10 +257,9 @@ export function MusicPage() {
         <div className="space-y-2">
           {search.isLoading && <p className="text-sm text-muted-foreground">Buscando...</p>}
           {search.data?.results?.map((item, i) => (
-            <MusicRow key={item.videoId ?? item.playlistId ?? i} item={item} onPlay={() => {
-              if (item.videoId) playSong(item);
-              else if (item.type === "album" && item.albumId) openAlbum(item.albumId, item.name, item.thumbnail);
-              else if (item.playlistId) openPlaylist(item.playlistId, item.name, item.thumbnail);
+            <MusicRow key={item.id ?? i} item={item} onPlay={() => {
+              if (item.type === "album" && item.id) openAlbum(item.id, item.name, item.thumbnail);
+              else if (item.id) playSong(item);
             }} />
           ))}
           {search.data?.results?.length === 0 && <p className="text-sm text-muted-foreground">Nenhum resultado.</p>}
@@ -277,10 +274,9 @@ export function MusicPage() {
               <h2 className="text-lg font-bold text-white">{section.title}</h2>
               <div className="flex gap-3 overflow-x-auto pb-2 thin-scrollbar">
                 {section.contents.map((item, j) => (
-                  <MusicCard key={item.playlistId ?? item.videoId ?? j} item={item} loading={activePlaylistId === item.playlistId || activeAlbumId === item.albumId} onClick={() => {
-                    if (item.videoId) playSong(item, section.contents.filter((c) => c.videoId));
-                    else if (item.type === "album" && item.albumId) openAlbum(item.albumId, item.name, item.thumbnail);
-                    else if (item.playlistId) openPlaylist(item.playlistId, item.name, item.thumbnail);
+                  <MusicCard key={item.id ?? j} item={item} onClick={() => {
+                    if (item.type === "album" && item.id) openAlbum(item.id, item.name, item.thumbnail);
+                    else if (item.id) playSong(item);
                   }} />
                 ))}
               </div>
@@ -290,21 +286,30 @@ export function MusicPage() {
       )}
 
       {currentVideo && (
-        <MiniPlayer video={currentVideo} isPlaying={isPlaying} isLoading={isLoadingSong} onTogglePlay={togglePlay} onNext={playNext} hasPrev={hasPrev} hasNext={hasNext} onPrev={playPrev} onClose={onClose} />
+        <MiniPlayer
+          video={currentVideo}
+          isPlaying={isPlaying}
+          isLoading={isLoadingSong || resolvingVideo}
+          onTogglePlay={togglePlay}
+          onNext={playNext} hasPrev={hasPrev} hasNext={hasNext}
+          onPrev={playPrev}
+          onClose={onClose}
+          videoId={videoId}
+        />
       )}
     </div>
   );
 }
 
-function MusicCard({ item, onClick, loading }: { item: MusicItem; onClick: () => void; loading?: boolean }) {
+function MusicCard({ item, onClick }: { item: MusicItem; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} disabled={loading} className="group flex w-40 shrink-0 flex-col gap-2 text-left disabled:opacity-50">
+    <button type="button" onClick={onClick} className="group flex w-40 shrink-0 flex-col gap-2 text-left">
       <div className="relative aspect-square overflow-hidden rounded-lg bg-white/[0.06]">
         {item.thumbnail ? <img src={item.thumbnail} alt={item.name} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" /> : (
           <div className="flex h-full w-full items-center justify-center"><Disc3 className="h-8 w-8 text-muted-foreground" /></div>
         )}
         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover:opacity-100">
-          {loading ? <Loader2 className="h-6 w-6 animate-spin text-white" /> : <Play className="h-8 w-8 text-white" fill="white" />}
+          <Play className="h-8 w-8 text-white" fill="white" />
         </div>
       </div>
       <p className="line-clamp-2 text-sm font-semibold leading-tight text-white">{item.name}</p>
@@ -315,7 +320,7 @@ function MusicCard({ item, onClick, loading }: { item: MusicItem; onClick: () =>
 
 function MusicRow({ item, onPlay }: { item: MusicItem; onPlay: () => void }) {
   return (
-    <button type="button" onClick={onPlay} disabled={!item.videoId && !item.playlistId && !item.albumId} className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition hover:bg-white/[0.06] disabled:opacity-50">
+    <button type="button" onClick={onPlay} disabled={!item.id} className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition hover:bg-white/[0.06] disabled:opacity-50">
       <div className="h-12 w-12 shrink-0 overflow-hidden rounded bg-white/[0.06]">
         {item.thumbnail && <img src={item.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" />}
       </div>
@@ -324,12 +329,15 @@ function MusicRow({ item, onPlay }: { item: MusicItem; onPlay: () => void }) {
         {item.artist && <p className="truncate text-xs text-muted-foreground">{item.artist}</p>}
       </div>
       {item.duration && <span className="shrink-0 text-xs text-muted-foreground">{Math.floor(item.duration / 60)}:{String(item.duration % 60).padStart(2, "0")}</span>}
-      {item.type === "playlist" && <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-muted-foreground">Playlist</span>}
+      {item.type === "album" && <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-muted-foreground">Album</span>}
     </button>
   );
 }
 
-function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev, onClose, hasPrev, hasNext }: { video: MusicItem; isPlaying: boolean; isLoading: boolean; onTogglePlay: () => void; onNext: () => void; onPrev: () => void; onClose: () => void; hasPrev: boolean; hasNext: boolean }) {
+function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev, onClose, hasPrev, hasNext, videoId }: {
+  video: { name: string; artist?: string; thumbnail?: string | null };
+  isPlaying: boolean; isLoading: boolean; onTogglePlay: () => void; onNext: () => void; onPrev: () => void; onClose: () => void; hasPrev: boolean; hasNext: boolean; videoId: string | null;
+}) {
   React.useEffect(() => { document.body.style.paddingBottom = "80px"; return () => { document.body.style.paddingBottom = ""; }; }, []);
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#0b141a]/95 backdrop-blur-xl">
@@ -341,7 +349,7 @@ function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev,
             {video.artist && <p className="truncate text-xs text-muted-foreground">{video.artist}</p>}
           </div>
         </div>
-        {isLoading && <Loader2 className="h-4 w-4 animate-spin text-white/60" />}
+        {(isLoading || !videoId) && <Loader2 className="h-4 w-4 animate-spin text-white/60" />}
         <div className="flex shrink-0 items-center gap-1">
           {hasPrev && <button type="button" onClick={onPrev} className="flex h-8 w-8 items-center justify-center rounded-full text-white/60 hover:text-white"><SkipBack className="h-4 w-4" fill="currentColor" /></button>}
           <button type="button" onClick={onTogglePlay} className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-black transition hover:scale-105">
@@ -354,5 +362,3 @@ function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev,
     </div>
   );
 }
-
-function cn(...classes: any[]) { return classes.filter(Boolean).join(" "); }

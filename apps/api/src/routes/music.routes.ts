@@ -2,11 +2,10 @@ import type { FastifyInstance } from "fastify";
 import { authenticate } from "../middleware/authenticate.js";
 import {
   getHomeSections,
-  searchSongs,
   searchAll,
-  getPlaylistVideos,
-  getArtistSongs,
-  getAlbumSongs,
+  getAlbum,
+  getArtistTop,
+  getYouTubeId,
 } from "../services/music.service.js";
 
 export async function musicRoutes(app: FastifyInstance) {
@@ -22,28 +21,22 @@ export async function musicRoutes(app: FastifyInstance) {
     return { results };
   });
 
-  app.get("/music/search-songs", { preHandler: [authenticate] }, async (req) => {
-    const { q } = req.query as { q?: string };
-    if (!q) return { songs: [] };
-    const songs = await searchSongs(q);
+  app.get("/music/album/:id", { preHandler: [authenticate] }, async (req) => {
+    const { id } = req.params as { id: string };
+    const songs = await getAlbum(id);
     return { songs };
   });
 
-  app.get("/music/playlist/:id", { preHandler: [authenticate] }, async (req) => {
+  app.get("/music/artist/:id/top", { preHandler: [authenticate] }, async (req) => {
     const { id } = req.params as { id: string };
-    const songs = await getPlaylistVideos(id);
+    const songs = await getArtistTop(id);
     return { songs };
   });
 
-  app.get("/music/artist/:id/songs", { preHandler: [authenticate] }, async (req) => {
-    const { id } = req.params as { id: string };
-    const songs = await getArtistSongs(id);
-    return { songs };
-  });
-
-  app.get("/music/album/:id/songs", { preHandler: [authenticate] }, async (req) => {
-    const { id } = req.params as { id: string };
-    const songs = await getAlbumSongs(id);
-    return { songs };
+  app.get("/music/youtube-id", { preHandler: [authenticate] }, async (req) => {
+    const { name, artist } = req.query as { name?: string; artist?: string };
+    if (!name) return { videoId: null };
+    const videoId = await getYouTubeId(name, artist ?? "");
+    return { videoId };
   });
 }
