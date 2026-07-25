@@ -67,8 +67,19 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
         playerVars: { autoplay: 1, controls: 0, disablekb: 1, modestbranding: 1, playsinline: 1 },
         events: {
           onReady: (e: any) => {
-            // Pre-load a silent video so the player is "warm"
+            // Pre-load a video so the player is "warm" and respond to user taps on mobile
             e.target.cueVideoById("dQw4w9WgXcQ");
+            // On mobile, first touchend should trigger play to unlock
+            const unlock = () => {
+              try {
+                e.target.playVideo();
+                setTimeout(() => { try { e.target.stopVideo(); } catch {} }, 300);
+              } catch {}
+              document.removeEventListener("touchend", unlock);
+              document.removeEventListener("click", unlock);
+            };
+            document.addEventListener("touchend", unlock);
+            document.addEventListener("click", unlock);
           },
           onStateChange: (e: any) => {
             const YT = window.YT; if (!YT) return;
