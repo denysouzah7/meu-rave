@@ -37,8 +37,12 @@ export function MusicPage() {
         const data = await api<{ videoId: string | null }>(`/music/youtube-id?name=${encodeURIComponent(name)}&artist=${encodeURIComponent(artist || "")}`);
         if (data.videoId) {
           player.play({ ...resolvingSong, id: data.videoId });
+        } else {
+          console.warn("No YouTube ID for:", name, artist);
         }
-      } catch {}
+      } catch (e) {
+        console.warn("YouTube ID fetch failed:", name, e);
+      }
       setResolvingSong(null);
     };
     fetchId();

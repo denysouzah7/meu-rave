@@ -133,6 +133,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
   };
 
   const play = (song: PlayerSong, list?: PlayerSong[]) => {
+    if (!song.id) return;
     const q = list ?? [song];
     const idx = q.findIndex((s) => s.id === song.id);
     setState({ ...stateRef.current, queue: q, queueIndex: idx >= 0 ? idx : 0, current: song, isPlaying: true, isLoading: true });
