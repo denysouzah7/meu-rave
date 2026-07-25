@@ -38,6 +38,7 @@ type PlayerContextValue = PlayerState & {
   seekForward: () => void;
   seekBackward: () => void;
   seekTo: (pct: number) => void;
+  userGesture: () => void;
 };
 
 const PlayerContext = React.createContext<PlayerContextValue | null>(null);
@@ -63,7 +64,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
       if (playerRef.current || !playerDivRef.current) return;
       playerRef.current = new window.YT.Player(playerDivRef.current, {
         height: "1", width: "1",
-        playerVars: { autoplay: 1, controls: 0, disablekb: 1, modestbranding: 1 },
+        playerVars: { autoplay: 1, controls: 0, disablekb: 1, modestbranding: 1, playsinline: 1 },
         events: {
           onReady: () => {},
           onStateChange: (e: any) => {
@@ -163,7 +164,13 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     playerRef.current.seekTo(pct * state.duration, true);
   };
 
-  const value: PlayerContextValue = { ...state, play, togglePlay, next, prev, stop, seekForward, seekBackward, seekTo };
+  const userGesture = () => {
+    try {
+      if (playerRef.current?.playVideo) playerRef.current.playVideo();
+    } catch {}
+  };
+
+  const value: PlayerContextValue = { ...state, play, togglePlay, next, prev, stop, seekForward, seekBackward, seekTo, userGesture };
 
   return (
     <PlayerContext.Provider value={value}>

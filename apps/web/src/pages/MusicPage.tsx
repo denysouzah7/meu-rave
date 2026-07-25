@@ -65,6 +65,7 @@ export function MusicPage() {
   // Override play once resolved (handled in effect above via setResolvingSong -> player.play)
   // For direct songs (from search with specific handling):
   const handleItemClick = (item: MusicItem, list?: MusicItem[]) => {
+    player.userGesture();
     if (item.type === "album" && item.id) { setActiveArtistId(null); setActiveAlbumId(item.id); setCollectionView({ songs: [], name: item.name, thumbnail: item.thumbnail ?? null }); }
     else if (item.type === "artist" && item.id) { setActiveAlbumId(null); setActiveArtistId(item.id); setCollectionView({ songs: [], name: item.name, thumbnail: item.thumbnail ?? null }); }
     else if (item.id) {
