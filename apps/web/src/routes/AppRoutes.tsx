@@ -4,6 +4,7 @@ import { AppShell } from "@/layouts/AppShell";
 import { AdminPage } from "@/pages/AdminPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { MusicPage } from "@/pages/MusicPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { RoomPage } from "@/pages/RoomPage";
@@ -24,6 +25,7 @@ const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { path: "/", element: <DashboardPage /> },
+          { path: "/musica", element: <MusicPage /> },
           { path: "/admin", element: <AdminPage /> },
           { path: "/perfil", element: <ProfilePage /> },
           { path: "/sala/:slug", element: <RoomPage /> }

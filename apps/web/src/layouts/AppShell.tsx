@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Disc3, Home, LogOut, Shield, UserRound } from "lucide-react";
+import { Disc3, Home, LogOut, Music, Shield, UserRound } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { useMe } from "@/hooks/useApi";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { to: "/", label: "Salas", icon: Home },
+  { to: "/musica", label: "Música", icon: Music },
   { to: "/perfil", label: "Perfil", icon: UserRound }
 ];
 
