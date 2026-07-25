@@ -1,16 +1,24 @@
+import * as React from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Disc3, Home, LogOut, Music, Shield, UserRound } from "lucide-react";
+import { Disc3, Gamepad2, Home, LogOut, Music, Shield, UserRound } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { useMe } from "@/hooks/useApi";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { GlobalRadioDock } from "@/components/radio/GlobalRadioDock";
+import { MusicPlayerProvider, useMusicPlayer } from "@/contexts/MusicPlayerContext";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { to: "/", label: "Salas", icon: Home },
   { to: "/musica", label: "Música", icon: Music },
   { to: "/perfil", label: "Perfil", icon: UserRound }
+];
+
+const mobileNavItems = [
+  { to: "/", label: "Salas", icon: Home },
+  { to: "/musica", label: "Música", icon: Music },
+  { to: "/jogos", label: "Jogos", icon: Gamepad2, disabled: true }
 ];
 
 export function AppShell() {
@@ -24,6 +32,17 @@ export function AppShell() {
     await authClient.signOut();
     navigate("/login", { replace: true });
   };
+
+  return (
+    <MusicPlayerProvider>
+      <AppShellInner user={user} isRoomRoute={isRoomRoute} signOut={signOut} />
+    </MusicPlayerProvider>
+  );
+}
+
+function AppShellInner({ user, isRoomRoute, signOut }: { user: any; isRoomRoute: boolean; signOut: () => void }) {
+  const { stop } = useMusicPlayer();
+  React.useEffect(() => { if (isRoomRoute) stop(); }, [isRoomRoute]);
 
   return (
     <div className={cn("app-surface min-h-screen", isRoomRoute && "max-sm:h-[100dvh] max-sm:min-h-0 max-sm:overflow-hidden lg:h-screen lg:min-h-0 lg:overflow-hidden")}>
@@ -122,20 +141,27 @@ className={cn(
 
       {!isRoomRoute && (
         <nav className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t border-white/10 bg-[#0b141a]/95 backdrop-blur-xl px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 lg:hidden">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                cn(
-                  "flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-medium text-muted-foreground transition",
-                  isActive && "text-primary"
-                )
-              }
-            >
-              <item.icon className="h-5 w-5" />
-              {item.label}
-            </NavLink>
+          {mobileNavItems.map((item) => (
+            !item.disabled ? (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  cn(
+                    "flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-medium text-muted-foreground transition",
+                    isActive && "text-primary"
+                  )
+                }
+              >
+                <item.icon className="h-5 w-5" />
+                {item.label}
+              </NavLink>
+            ) : (
+              <span key={item.to} className="flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-medium text-muted-foreground/40 cursor-not-allowed">
+                <item.icon className="h-5 w-5" />
+                {item.label}
+              </span>
+            )
           ))}
         </nav>
       )}
