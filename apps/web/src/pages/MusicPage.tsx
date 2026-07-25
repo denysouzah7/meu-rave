@@ -53,7 +53,7 @@ export function MusicPage() {
   const search = useMusicSearch(query);
   const [activePlaylistId, setActivePlaylistId] = React.useState<string | null>(null);
   const [activeAlbumId, setActiveAlbumId] = React.useState<string | null>(null);
-  const playlistData = useMusicPlaylist(activePlaylistId ?? "", collectionView?.name ?? "");
+  const playlistData = useMusicPlaylist(activePlaylistId ?? "");
   const albumData = useAlbumSongs(activeAlbumId ?? "");
 
   const playerRef = React.useRef<any>(null);
@@ -219,7 +219,12 @@ export function MusicPage() {
       {collectionView && (
         <div className="space-y-1">
           {fetchingPlaylist && <p className="text-sm text-muted-foreground">Carregando musicas...</p>}
-          {!fetchingPlaylist && collectionView.songs.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma musica encontrada.</p>}
+          {!fetchingPlaylist && collectionView.songs.length === 0 && (
+            <div className="flex flex-col items-center gap-3 pt-8 text-center">
+              <p className="text-sm text-muted-foreground">Playlist temporariamente indisponivel.</p>
+              <p className="text-xs text-muted-foreground/60">Tente buscar por &quot;{collectionView.name}&quot; na pesquisa.</p>
+            </div>
+          )}
           {collectionView.songs.map((song, i) => (
             <button
               key={song.videoId ?? i}

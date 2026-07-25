@@ -31,8 +31,7 @@ export async function musicRoutes(app: FastifyInstance) {
 
   app.get("/music/playlist/:id", { preHandler: [authenticate] }, async (req) => {
     const { id } = req.params as { id: string };
-    const { name } = req.query as { name?: string };
-    const songs = await getPlaylistVideos(id, name);
+    const songs = await getPlaylistVideos(id);
     return { songs };
   });
 

@@ -43,10 +43,10 @@ export function useMusicSearch(query: string) {
   });
 }
 
-export function useMusicPlaylist(playlistId: string, name?: string) {
+export function useMusicPlaylist(playlistId: string) {
   return useQuery<{ songs: MusicItem[] }>({
     queryKey: ["music", "playlist", playlistId],
-    queryFn: () => api(`/music/playlist/${playlistId}?name=${encodeURIComponent(name ?? "")}`),
+    queryFn: () => api(`/music/playlist/${playlistId}`),
     enabled: Boolean(playlistId),
   });
 }

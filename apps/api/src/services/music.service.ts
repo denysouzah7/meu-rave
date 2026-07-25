@@ -31,11 +31,13 @@ export async function getHomeSections() {
   const yt = await getYt();
   const sections = await yt.getHomeSections();
 
+  const excludeMixPrefixes = ["RDCLAK5uy_"];
   const mapped = sections.map((section: any) => ({
     title: section.title,
     contents: (section.contents ?? []).map((item: any) => {
       if (item.type === "SONG") return mapSong(item);
       if (item.type === "ALBUM") return mapAlbum(item);
+      if (excludeMixPrefixes.some((p) => item.playlistId?.startsWith(p))) return null;
       return mapPlaylist(item);
     }).filter(Boolean),
   }));
@@ -76,7 +78,7 @@ export async function searchAll(query: string, limit = 30) {
   return mapped;
 }
 
-export async function getPlaylistVideos(playlistId: string, fallbackName?: string) {
+export async function getPlaylistVideos(playlistId: string) {
   const key = `playlist_${playlistId}`;
   const cached = getCached(key);
   if (cached) return cached;
@@ -85,27 +87,13 @@ export async function getPlaylistVideos(playlistId: string, fallbackName?: strin
   try {
     const playlist = await yt.getPlaylistVideos(playlistId);
     const mapped = (playlist ?? []).map(mapSong);
-    if (mapped.length > 0) {
-      setCached(key, mapped);
-      return mapped;
-    }
+    setCached(key, mapped);
+    return mapped;
   } catch (error) {
     console.error("getPlaylistVideos error:", playlistId, error);
+    setCached(key, []);
+    return [];
   }
-
-  // Fallback: try searching by name
-  if (fallbackName) {
-    try {
-      console.log("fallback search for:", fallbackName);
-      const results = await yt.searchSongs(fallbackName);
-      const mapped = (results ?? []).slice(0, 20).map(mapSong);
-      setCached(key, mapped);
-      return mapped;
-    } catch {}
-  }
-
-  setCached(key, []);
-  return [];
 }
 
 export async function getAlbumSongs(albumId: string) {
