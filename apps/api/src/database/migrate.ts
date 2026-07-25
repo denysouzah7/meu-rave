@@ -268,7 +268,23 @@ export function migrate() {
       "createdAt" INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS "notifications_user_read_idx" ON "notifications" ("userId", "readAt");
+
+    CREATE TABLE IF NOT EXISTS "room_statuses" (
+      "id" TEXT PRIMARY KEY NOT NULL,
+      "roomId" TEXT NOT NULL REFERENCES "rooms"("id") ON DELETE CASCADE,
+      "userId" TEXT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+      "uploadId" TEXT NOT NULL REFERENCES "uploads"("id") ON DELETE CASCADE,
+      "type" TEXT NOT NULL,
+      "caption" TEXT,
+      "createdAt" INTEGER NOT NULL,
+      "expiresAt" INTEGER NOT NULL,
+      "deletedAt" INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS "room_statuses_room_expires_idx" ON "room_statuses" ("roomId", "expiresAt");
   `);
+
+  // Cleanup expired statuses
+  sqlite.prepare(`DELETE FROM "room_statuses" WHERE "expiresAt" < ?`).run(Date.now());
 
   const roomColumns = sqlite
     .prepare("PRAGMA table_info(rooms)")

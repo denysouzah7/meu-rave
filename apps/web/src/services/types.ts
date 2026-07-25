@@ -180,4 +180,17 @@ export type RoomPayload = {
   messageCount: number;
   messageRanking: RoomMessageRankingItem[];
   messageRetentionDays?: number | null;
+  statuses?: RoomStatus[];
+};
+
+export type RoomStatus = {
+  id: string;
+  roomId: string;
+  userId: string;
+  uploadId: string;
+  mediaUrl: string;
+  type: "image" | "video";
+  caption?: string | null;
+  createdAt: string;
+  expiresAt: string;
 };

@@ -294,6 +294,33 @@ export const roomPlaybackState = sqliteTable("room_playback_state", {
   }),
 });
 
+export const roomStatuses = sqliteTable(
+  "room_statuses",
+  {
+    id: text("id").primaryKey(),
+    roomId: text("roomId")
+      .notNull()
+      .references(() => rooms.id, { onDelete: "cascade" }),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    uploadId: text("uploadId")
+      .notNull()
+      .references(() => uploads.id, { onDelete: "cascade" }),
+    type: text("type", { enum: ["image", "video"] }).notNull(),
+    caption: text("caption"),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+    expiresAt: integer("expiresAt", { mode: "timestamp_ms" }).notNull(),
+    deletedAt: integer("deletedAt", { mode: "timestamp_ms" }),
+  },
+  (table) => ({
+    roomExpiresIdx: index("room_statuses_room_expires_idx").on(
+      table.roomId,
+      table.expiresAt,
+    ),
+  }),
+);
+
 export const stickerPacks = sqliteTable(
   "sticker_packs",
   {
