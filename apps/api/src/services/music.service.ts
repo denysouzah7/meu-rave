@@ -115,7 +115,6 @@ export async function getYouTubeIds(tracks: { name: string; artist: string }[]):
 /* Mappers */
 function mapDzTrack(t: any, albumName?: string, albumCover?: string) {
   const artistId = t.artist?.id;
-  const albumId = t.album?.id;
   return {
     type: "song" as const,
     id: String(t.id),
@@ -124,7 +123,7 @@ function mapDzTrack(t: any, albumName?: string, albumCover?: string) {
     artistId: String(artistId ?? ""),
     album: albumName ?? t.album?.title,
     duration: t.duration,
-    thumbnail: albumCover ?? t.album?.cover_medium ?? t.album?.cover_big ?? t.album?.cover_small ?? t.album?.cover ?? t.artist?.picture_medium ?? t.artist?.picture_big ?? t.artist?.picture_small ?? (artistId ? `https://api.deezer.com/artist/${artistId}/image` : null) ?? (albumId ? `https://api.deezer.com/album/${albumId}/image` : null),
+    thumbnail: albumCover ?? t.album?.cover_medium ?? t.artist?.picture_medium ?? (artistId ? `https://api.deezer.com/artist/${artistId}/image` : null),
     previewUrl: t.preview,
   };
 }

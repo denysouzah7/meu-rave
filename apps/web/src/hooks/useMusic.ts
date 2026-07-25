@@ -23,7 +23,7 @@ export function useMusicHome() {
   return useQuery<{ sections: HomeSection[] }>({
     queryKey: ["music", "home"],
     queryFn: () => api("/music/home"),
-    staleTime: 1000 * 60 * 30,
+    staleTime: 1000 * 60 * 5,
   });
 }
 
