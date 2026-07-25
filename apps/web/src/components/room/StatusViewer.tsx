@@ -47,15 +47,6 @@ export function StatusViewer({
 
   return (
     <div className="fixed inset-0 z-50 bg-black select-none">
-      {/* Progress */}
-      <div className="absolute left-0 right-0 top-0 z-10 flex gap-px">
-        {statuses.map((s, i) => (
-          <div key={s.id} className="h-[1px] flex-1 bg-white/20">
-            <div className="h-full bg-white" style={{ width: i <= index ? "100%" : "0%" }} />
-          </div>
-        ))}
-      </div>
-
       {/* Fechar */}
       <button
         type="button"
