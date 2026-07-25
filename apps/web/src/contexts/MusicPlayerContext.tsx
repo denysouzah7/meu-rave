@@ -63,7 +63,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
       if (playerRef.current || !playerDivRef.current) return;
       playerRef.current = new window.YT.Player(playerDivRef.current, {
         height: "1", width: "1",
-        playerVars: { autoplay: 0, controls: 0, disablekb: 1, modestbranding: 1 },
+        playerVars: { autoplay: 1, controls: 0, disablekb: 1, modestbranding: 1 },
         events: {
           onReady: () => {},
           onStateChange: (e: any) => {
@@ -91,6 +91,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     const tryLoad = () => {
       if (playerRef.current?.loadVideoById) {
         playerRef.current.loadVideoById(videoId);
+        playerRef.current.playVideo();
       } else {
         setTimeout(tryLoad, 100);
       }
