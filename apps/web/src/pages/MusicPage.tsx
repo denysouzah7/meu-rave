@@ -9,6 +9,14 @@ import {
   type MusicItem,
 } from "@/hooks/useMusic";
 
+function CoverImg({ src, alt, className }: { src: string | null | undefined; alt: string; className: string }) {
+  const [imgSrc, setImgSrc] = React.useState<string | null>(src ? (String(src)) : null);
+  if (!imgSrc) return <div className={cn(className, "flex items-center justify-center bg-white/[0.06]")}><Disc3 className="h-8 w-8 text-muted-foreground" /></div>;
+  return <img src={imgSrc} alt={alt} loading="lazy" className={className} onError={() => setImgSrc(null)} />;
+}
+
+function cn(...classes: any[]) { return classes.filter(Boolean).join(" "); }
+
 declare global { interface Window { YT?: any; onYouTubeIframeAPIReady?: () => void; } }
 
 let ytReady = false; let ytCallbacks: (() => void)[] = [];
@@ -135,7 +143,7 @@ export function MusicPage() {
           <>
             <button type="button" onClick={closeCollection} className="flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10"><ChevronLeft className="h-5 w-5" /></button>
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              {collectionView.thumbnail && <img src={collectionView.thumbnail} alt="" className="h-10 w-10 shrink-0 rounded object-cover" />}
+              {collectionView.thumbnail && <CoverImg src={collectionView.thumbnail} alt="" className="h-10 w-10 shrink-0 rounded object-cover" />}
               <div className="min-w-0">
                 <h1 className="truncate text-lg font-bold text-white">{collectionView.name}</h1>
                 <p className="text-xs text-muted-foreground">{collectionView.songs.length} musicas</p>
@@ -250,7 +258,7 @@ function CollectionContent({ songs, currentVideo, isPlaying, onPlay, isLoading, 
             {artistData.albums.map((album) => (
               <button key={album.id} type="button" onClick={() => onAlbumClick(album.id, album.name, album.thumbnail)} className="group flex w-36 shrink-0 flex-col gap-2 text-left">
                 <div className="relative aspect-square overflow-hidden rounded-lg bg-white/[0.06]">
-                  {album.thumbnail ? <img src={album.thumbnail} alt={album.name} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" /> : (
+                  {album.thumbnail ? <CoverImg src={album.thumbnail} alt={album.name} className="h-full w-full object-cover transition group-hover:scale-105" /> : (
                     <div className="flex h-full w-full items-center justify-center"><Disc3 className="h-8 w-8 text-muted-foreground" /></div>
                   )}
                   <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover:opacity-100"><Play className="h-8 w-8 text-white" fill="white" /></div>
@@ -269,7 +277,7 @@ function HomeCard({ item, onClick }: { item: MusicItem; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} className="group flex w-40 shrink-0 flex-col gap-2 text-left">
       <div className="relative aspect-square overflow-hidden rounded-lg bg-white/[0.06]">
-        {item.thumbnail ? <img src={item.thumbnail} alt={item.name} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" /> : (
+        {item.thumbnail ? <CoverImg src={item.thumbnail} alt={item.name} className="h-full w-full object-cover transition group-hover:scale-105" /> : (
           <div className="flex h-full w-full items-center justify-center"><Disc3 className="h-8 w-8 text-muted-foreground" /></div>
         )}
         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover:opacity-100"><Play className="h-8 w-8 text-white" fill="white" /></div>
@@ -284,7 +292,7 @@ function SearchRow({ item, onPlay }: { item: MusicItem; onPlay: () => void }) {
   return (
     <button type="button" onClick={onPlay} disabled={!item.id} className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition hover:bg-white/[0.06] disabled:opacity-50">
       <div className="h-12 w-12 shrink-0 overflow-hidden rounded bg-white/[0.06]">
-        {item.thumbnail && <img src={item.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" />}
+        {item.thumbnail && <CoverImg src={item.thumbnail} alt="" className="h-full w-full object-cover" />}
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-white">{item.name}</p>
@@ -306,7 +314,7 @@ function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev,
     <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#0b141a]/95 backdrop-blur-xl">
       <div className="mx-auto flex max-w-[1500px] items-center gap-3 px-4 py-2.5">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          {video.thumbnail && <img src={video.thumbnail} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />}
+          {video.thumbnail && <CoverImg src={video.thumbnail} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />}
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-white">{video.name}</p>
             {video.artist && <p className="truncate text-xs text-muted-foreground">{video.artist}</p>}
