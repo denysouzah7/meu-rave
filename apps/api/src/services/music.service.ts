@@ -82,11 +82,15 @@ export async function getPlaylistVideos(playlistId: string) {
   if (cached) return cached;
 
   const yt = await getYt();
-  const playlist = await yt.getPlaylistVideos(playlistId);
-  const mapped = (playlist ?? []).map(mapSong);
-
-  setCached(key, mapped);
-  return mapped;
+  try {
+    const playlist = await yt.getPlaylistVideos(playlistId);
+    const mapped = (playlist ?? []).map(mapSong);
+    setCached(key, mapped);
+    return mapped;
+  } catch (error) {
+    console.error("getPlaylistVideos error:", playlistId, error);
+    return [];
+  }
 }
 
 export async function getAlbumSongs(albumId: string) {
@@ -95,11 +99,23 @@ export async function getAlbumSongs(albumId: string) {
   if (cached) return cached;
 
   const yt = await getYt();
-  const album: any = await yt.getAlbum(albumId);
-  const songs = (album?.songs ?? []).map(mapSong);
+  try {
+    const album: any = await yt.getAlbum(albumId);
+    if (album?.songs) {
+      const songs = album.songs.map(mapSong);
+      setCached(key, songs);
+      return songs;
+    }
+  } catch (error) {
+    console.error("getAlbumSongs error:", albumId, error);
+  }
 
-  setCached(key, songs);
-  return songs;
+  try {
+    const playlistVideos = (await getPlaylistVideos(albumId)) as any[];
+    if (playlistVideos.length > 0) return playlistVideos;
+  } catch {}
+
+  return [];
 }
 
 export async function getArtistSongs(artistId: string) {
