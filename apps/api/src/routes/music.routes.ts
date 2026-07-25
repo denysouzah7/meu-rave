@@ -6,6 +6,7 @@ import {
   searchAll,
   getPlaylistVideos,
   getArtistSongs,
+  getAlbumSongs,
 } from "../services/music.service.js";
 
 export async function musicRoutes(app: FastifyInstance) {
@@ -37,6 +38,12 @@ export async function musicRoutes(app: FastifyInstance) {
   app.get("/music/artist/:id/songs", { preHandler: [authenticate] }, async (req) => {
     const { id } = req.params as { id: string };
     const songs = await getArtistSongs(id);
+    return { songs };
+  });
+
+  app.get("/music/album/:id/songs", { preHandler: [authenticate] }, async (req) => {
+    const { id } = req.params as { id: string };
+    const songs = await getAlbumSongs(id);
     return { songs };
   });
 }

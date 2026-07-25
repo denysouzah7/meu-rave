@@ -4,6 +4,7 @@ import {
   useMusicHome,
   useMusicSearch,
   useMusicPlaylist,
+  useAlbumSongs,
   type MusicItem,
 } from "@/hooks/useMusic";
 
@@ -46,12 +47,15 @@ export function MusicPage() {
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [isLoadingSong, setIsLoadingSong] = React.useState(false);
   const [loadingPlaylistId, setLoadingPlaylistId] = React.useState<string | null>(null);
+  const [loadingAlbumId, setLoadingAlbumId] = React.useState<string | null>(null);
   const [queue, setQueue] = React.useState<MusicItem[]>([]);
   const [queueIndex, setQueueIndex] = React.useState(0);
 
   const search = useMusicSearch(query);
   const [activePlaylistId, setActivePlaylistId] = React.useState<string | null>(null);
+  const [activeAlbumId, setActiveAlbumId] = React.useState<string | null>(null);
   const playlistData = useMusicPlaylist(activePlaylistId ?? "");
+  const albumData = useAlbumSongs(activeAlbumId ?? "");
 
   const playerRef = React.useRef<any>(null);
   const playerDivRef = React.useRef<HTMLDivElement | null>(null);
@@ -159,6 +163,22 @@ export function MusicPage() {
     }
   }, [playlistData.data, loadingPlaylistId]);
 
+  React.useEffect(() => {
+    if (albumData.data?.songs?.length && loadingAlbumId) {
+      const songs = albumData.data.songs;
+      setQueue(songs);
+      setQueueIndex(0);
+      queueRef.current = { queue: songs, index: 0 };
+      const first = songs.find((s) => s.videoId);
+      if (first?.videoId) {
+        setCurrentVideo(first);
+        setIsPlaying(true);
+        loadVideo(first.videoId);
+      }
+      setLoadingAlbumId(null);
+    }
+  }, [albumData.data, loadingAlbumId]);
+
   /* Controls */
   const togglePlay = () => {
     if (!playerRef.current) return;
@@ -258,6 +278,7 @@ export function MusicPage() {
               item={item}
               onPlay={() => {
                 if (item.videoId) playSong(item);
+                else if (item.type === "album" && item.albumId) { setLoadingAlbumId(item.albumId); setActiveAlbumId(item.albumId); }
                 else if (item.playlistId) playPlaylist(item.playlistId);
               }}
             />
@@ -278,10 +299,13 @@ export function MusicPage() {
                   <MusicCard
                     key={item.playlistId ?? item.videoId ?? j}
                     item={item}
-                    loading={loadingPlaylistId === item.playlistId}
+                    loading={loadingPlaylistId === item.playlistId || loadingAlbumId === item.albumId}
                     onClick={() => {
                       if (item.videoId) {
                         playSong(item, section.contents.filter((c) => c.videoId));
+                      } else if (item.type === "album" && item.albumId) {
+                        setLoadingAlbumId(item.albumId);
+                        setActiveAlbumId(item.albumId);
                       } else if (item.playlistId) {
                         playPlaylist(item.playlistId);
                       }

@@ -33,7 +33,11 @@ export async function getHomeSections() {
 
   const mapped = sections.map((section: any) => ({
     title: section.title,
-    contents: (section.contents ?? []).map((item: any) => mapPlaylist(item)).filter(Boolean),
+    contents: (section.contents ?? []).map((item: any) => {
+      if (item.type === "SONG") return mapSong(item);
+      if (item.type === "ALBUM") return mapAlbum(item);
+      return mapPlaylist(item);
+    }).filter(Boolean),
   }));
 
   setCached("home_sections", mapped);
@@ -83,6 +87,19 @@ export async function getPlaylistVideos(playlistId: string) {
 
   setCached(key, mapped);
   return mapped;
+}
+
+export async function getAlbumSongs(albumId: string) {
+  const key = `album_${albumId}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
+  const yt = await getYt();
+  const album: any = await yt.getAlbum(albumId);
+  const songs = (album?.songs ?? []).map(mapSong);
+
+  setCached(key, songs);
+  return songs;
 }
 
 export async function getArtistSongs(artistId: string) {

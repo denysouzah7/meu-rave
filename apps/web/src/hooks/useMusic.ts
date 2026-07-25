@@ -14,6 +14,14 @@ export type MusicItem = {
   albumId?: string;
 };
 
+export function useAlbumSongs(albumId: string) {
+  return useQuery<{ songs: MusicItem[] }>({
+    queryKey: ["music", "album", albumId],
+    queryFn: () => api(`/music/album/${albumId}/songs`),
+    enabled: Boolean(albumId),
+  });
+}
+
 export type HomeSection = {
   title: string;
   contents: MusicItem[];
