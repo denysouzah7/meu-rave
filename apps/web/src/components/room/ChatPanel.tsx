@@ -322,6 +322,22 @@ export function ChatPanel({
       </div>
 
       <CardContent className="room-chat-body flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+        {typingUsers && typingUsers.length > 0 && (
+          <div className="flex shrink-0 items-center gap-2.5 border-b border-white/[0.04] px-4 py-2">
+            <div className="flex items-center gap-[3px]">
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+            </div>
+            <p className="truncate text-[13px] font-medium text-[#aebac1]">
+              {typingUsers.length === 1
+                ? typingUsers[0]
+                : typingUsers.length === 2
+                  ? `${typingUsers[0]} e ${typingUsers[1]}`
+                  : `${typingUsers[0]} e mais ${typingUsers.length - 1}`}
+            </p>
+          </div>
+        )}
         <MessageList
           messages={messages}
           currentUserId={currentUserId}
@@ -436,23 +452,6 @@ export function ChatPanel({
             <div className="px-3 pt-2">
               <p className="rounded-lg border border-red-400/[0.20] bg-red-500/[0.10] px-3 py-2 text-xs text-red-100">
                 {composerError}
-              </p>
-            </div>
-          )}
-
-          {typingUsers && typingUsers.length > 0 && (
-            <div className="flex items-center gap-2 px-3 pb-1.5">
-              <div className="flex items-center gap-[3px] text-[#8696a0]">
-                <span className="typing-dot" />
-                <span className="typing-dot" />
-                <span className="typing-dot" />
-              </div>
-              <p className="truncate text-[12.5px] text-[#8696a0]">
-                {typingUsers.length === 1
-                  ? `${typingUsers[0]} esta digitando`
-                  : typingUsers.length === 2
-                    ? `${typingUsers[0]} e ${typingUsers[1]} estao digitando`
-                    : `${typingUsers[0]} e mais ${typingUsers.length - 1} pessoas estao digitando`}
               </p>
             </div>
           )}
