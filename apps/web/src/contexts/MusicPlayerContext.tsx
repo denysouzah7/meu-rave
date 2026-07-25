@@ -66,7 +66,10 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
         height: "1", width: "1",
         playerVars: { autoplay: 1, controls: 0, disablekb: 1, modestbranding: 1, playsinline: 1 },
         events: {
-          onReady: () => {},
+          onReady: (e: any) => {
+            // Pre-load a silent video so the player is "warm"
+            e.target.cueVideoById("dQw4w9WgXcQ");
+          },
           onStateChange: (e: any) => {
             const YT = window.YT; if (!YT) return;
             if (e.data === YT.PlayerState.PLAYING) setState(s => ({ ...s, isPlaying: true, isLoading: false }));
@@ -85,28 +88,6 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
       }
     }, 1000);
     return () => clearInterval(posInterval);
-  }, []);
-
-  // Unlock audio on first user tap (mobile autoplay workaround)
-  React.useEffect(() => {
-    let unlocked = false;
-    const unlock = () => {
-      if (unlocked || !playerRef.current?.playVideo) return;
-      unlocked = true;
-      try {
-        playerRef.current.cueVideoById("dQw4w9WgXcQ");
-        playerRef.current.playVideo();
-        setTimeout(() => { try { playerRef.current?.stopVideo(); } catch {} }, 200);
-      } catch {}
-      document.removeEventListener("click", unlock);
-      document.removeEventListener("touchend", unlock);
-    };
-    document.addEventListener("click", unlock);
-    document.addEventListener("touchend", unlock);
-    return () => {
-      document.removeEventListener("click", unlock);
-      document.removeEventListener("touchend", unlock);
-    };
   }, []);
 
   const loadVideo = (videoId: string) => {
@@ -197,7 +178,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
 
   return (
     <PlayerContext.Provider value={value}>
-      <div ref={playerDivRef} style={{ position: "absolute", left: -9999, top: -9999, width: 1, height: 1, opacity: 0, pointerEvents: "none" }} />
+      <div ref={playerDivRef} style={{ position: "fixed", left: 0, top: 0, width: 2, height: 2, opacity: 0.01, pointerEvents: "none" }} />
       {children}
     </PlayerContext.Provider>
   );
