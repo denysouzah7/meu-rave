@@ -70,7 +70,7 @@ export function MusicPlayerBar() {
   const hasNext = player.queueIndex < player.queue.length - 1;
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-  const iframeSrc = ytId ? `https://www.youtube.com/embed/${ytId}?autoplay=1&controls=0&playsinline=1&rel=0` : null;
+  const iframeSrc = ytId ? `https://www.youtube.com/embed/${ytId}?autoplay=1&controls=0&playsinline=1&rel=0&mute=1` : null;
 
   if (expanded) {
     return (
@@ -99,14 +99,21 @@ export function MusicPlayerBar() {
             </div>
           </div>
         </div>
-        {iframeSrc && <iframe src={iframeSrc} className="absolute" style={{ left: -9999, top: -9999, width: 1, height: 1 }} allow="autoplay" title="player" />}
+        {iframeSrc && <iframe src={iframeSrc} className="absolute inset-0 w-full h-full opacity-0" allow="autoplay" title="player" />}
       </div>
     );
   }
 
   return (
     <div className="fixed bottom-14 sm:bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#0b141a]/95 backdrop-blur-xl lg:bottom-0">
-      {iframeSrc && player.isPlaying && <iframe src={iframeSrc} className="sr-only" allow="autoplay" title="player" />}
+      {iframeSrc && player.isPlaying && (
+          <iframe
+            src={iframeSrc}
+            className="absolute left-0 top-0 w-full h-full opacity-0"
+            allow="autoplay"
+            title="player"
+          />
+        )}
       <div className="mx-auto flex max-w-[1500px] items-center gap-2 sm:gap-3 px-2 sm:px-4 py-2 sm:py-2.5" onClick={() => setExpanded(true)} style={{ cursor: "pointer" }}>
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           {song.thumbnail && <CoverImg src={song.thumbnail} alt="" className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded object-cover" />}
