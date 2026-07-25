@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Search, Play, X, Pause, ChevronLeft, SkipBack, SkipForward, Loader2, Disc3 } from "lucide-react";
+import { Search, Play, X, Pause, ChevronLeft, SkipBack, SkipForward, Loader2, Disc3, RotateCcw, RotateCw } from "lucide-react";
 import {
   useMusicHome,
   useMusicSearch,
@@ -44,6 +44,8 @@ export function MusicPage() {
   const [queueIndex, setQueueIndex] = React.useState(0);
   const [videoId, setVideoId] = React.useState<string | null>(null);
   const [resolvingVideo, setResolvingVideo] = React.useState(false);
+  const [position, setPosition] = React.useState(0);
+  const [duration, setDuration] = React.useState(0);
   const [collectionView, setCollectionView] = React.useState<{ songs: MusicItem[]; name: string; thumbnail?: string | null } | null>(null);
   const [activeAlbumId, setActiveAlbumId] = React.useState<string | null>(null);
   const [activeArtistId, setActiveArtistId] = React.useState<string | null>(null);
@@ -55,6 +57,17 @@ export function MusicPage() {
   const playerDivRef = React.useRef<HTMLDivElement | null>(null);
   const pendingVideoIdRef = React.useRef<string | null>(null);
   const queueRef = React.useRef<{ queue: MusicItem[]; index: number }>({ queue: [], index: 0 });
+
+  React.useEffect(() => {
+    if (!isPlaying) return;
+    const iv = setInterval(() => {
+      if (playerRef.current?.getCurrentTime) {
+        setPosition(playerRef.current.getCurrentTime() || 0);
+        setDuration(playerRef.current.getDuration() || 0);
+      }
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [isPlaying]);
 
   React.useEffect(() => {
     loadYT().then(() => {
@@ -125,7 +138,15 @@ export function MusicPage() {
   };
 
   const togglePlay = () => { if (!playerRef.current) return; if (isPlaying) playerRef.current.pauseVideo(); else playerRef.current.playVideo(); };
-  const onClose = () => { playerRef.current?.stopVideo(); setCurrentVideo(null); setIsPlaying(false); setQueue([]); setQueueIndex(0); setVideoId(null); queueRef.current = { queue: [], index: 0 }; };
+  const onClose = () => { playerRef.current?.stopVideo(); setCurrentVideo(null); setIsPlaying(false); setQueue([]); setQueueIndex(0); setVideoId(null); queueRef.current = { queue: [], index: 0 }; setPosition(0); setDuration(0); };
+  const skipForward = () => { if (playerRef.current?.seekTo) playerRef.current.seekTo(Math.min((playerRef.current.getCurrentTime() || 0) + 15, playerRef.current.getDuration() || 0), true); };
+  const skipBackward = () => { if (playerRef.current?.seekTo) playerRef.current.seekTo(Math.max((playerRef.current.getCurrentTime() || 0) - 15, 0), true); };
+  const seekTo = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!duration || !playerRef.current?.seekTo) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    playerRef.current.seekTo(pct * duration, true);
+  };
   const openAlbum = (id: string, name: string, thumbnail?: string | null) => { setActiveArtistId(null); setActiveAlbumId(id); setCollectionView({ songs: [], name, thumbnail: thumbnail ?? null }); };
   const openArtist = (id: string, name: string, thumbnail?: string | null) => { setActiveAlbumId(null); setActiveArtistId(id); setCollectionView({ songs: [], name, thumbnail: thumbnail ?? null }); };
   const closeCollection = () => { setCollectionView(null); setActiveAlbumId(null); setActiveArtistId(null); };
@@ -217,7 +238,10 @@ export function MusicPage() {
       )}
 
       {currentVideo && (
-        <MiniPlayer video={currentVideo} isPlaying={isPlaying} isLoading={isLoadingSong || resolvingVideo} onTogglePlay={togglePlay} onNext={playNext} hasPrev={hasPrev} hasNext={hasNext} onPrev={playPrev} onClose={onClose} videoId={videoId} />
+        <MiniPlayer video={currentVideo} isPlaying={isPlaying} isLoading={isLoadingSong || resolvingVideo} onTogglePlay={togglePlay} onNext={playNext} hasPrev={hasPrev} hasNext={hasNext} onPrev={playPrev} onClose={onClose} videoId={videoId}
+          position={position} duration={duration}
+          onSkipForward={skipForward} onSkipBackward={skipBackward} onSeek={seekTo}
+        />
       )}
     </div>
   );
@@ -305,28 +329,50 @@ function SearchRow({ item, onPlay }: { item: MusicItem; onPlay: () => void }) {
   );
 }
 
-function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev, onClose, hasPrev, hasNext, videoId }: {
+function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev, onClose, hasPrev, hasNext, videoId, position, duration, onSkipForward, onSkipBackward, onSeek }: {
   video: { name: string; artist?: string; thumbnail?: string | null };
   isPlaying: boolean; isLoading: boolean; onTogglePlay: () => void; onNext: () => void; onPrev: () => void; onClose: () => void; hasPrev: boolean; hasNext: boolean; videoId: string | null;
+  position: number; duration: number;
+  onSkipForward: () => void; onSkipBackward: () => void; onSeek: (e: React.MouseEvent<HTMLDivElement>) => void;
 }) {
   React.useEffect(() => { document.body.style.paddingBottom = "80px"; return () => { document.body.style.paddingBottom = ""; }; }, []);
+  const pct = duration > 0 ? (position / duration) * 100 : 0;
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#0b141a]/95 backdrop-blur-xl">
+      {/* Progress bar */}
+      <div className="h-1 w-full cursor-pointer bg-white/10" onClick={onSeek}>
+        <div className="h-full bg-primary transition-all duration-300" style={{ width: `${pct}%` }} />
+      </div>
+
       <div className="mx-auto flex max-w-[1500px] items-center gap-3 px-4 py-2.5">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+
+
+      {/* Capa + info */}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
           {video.thumbnail && <CoverImg src={video.thumbnail} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />}
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-white">{video.name}</p>
             {video.artist && <p className="truncate text-xs text-muted-foreground">{video.artist}</p>}
+            <p className="text-[10px] text-muted-foreground">{formatTime(position)} / {formatTime(duration)}</p>
           </div>
         </div>
+
         {isLoading && <Loader2 className="h-4 w-4 animate-spin text-white/60" />}
+
+        {/* Controls */}
         <div className="flex shrink-0 items-center gap-1">
+          <button type="button" onClick={onSkipBackward} className="flex h-8 w-8 items-center justify-center rounded-full text-white/50 hover:text-white">
+            <RotateCcw className="h-4 w-4" />
+          </button>
           {hasPrev && <button type="button" onClick={onPrev} className="flex h-8 w-8 items-center justify-center rounded-full text-white/60 hover:text-white"><SkipBack className="h-4 w-4" fill="currentColor" /></button>}
           <button type="button" onClick={onTogglePlay} className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-black transition hover:scale-105">
             {isPlaying ? <Pause className="h-5 w-5" fill="currentColor" /> : <Play className="h-5 w-5" fill="currentColor" />}
           </button>
           {hasNext && <button type="button" onClick={onNext} className="flex h-8 w-8 items-center justify-center rounded-full text-white/60 hover:text-white"><SkipForward className="h-4 w-4" fill="currentColor" /></button>}
+          <button type="button" onClick={onSkipForward} className="flex h-8 w-8 items-center justify-center rounded-full text-white/50 hover:text-white">
+            <RotateCw className="h-4 w-4" />
+          </button>
           <button type="button" onClick={onClose} className="ml-1 flex h-8 w-8 items-center justify-center rounded-full text-white/40 hover:text-white"><X className="h-4 w-4" /></button>
         </div>
       </div>
