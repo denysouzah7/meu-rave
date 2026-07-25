@@ -122,7 +122,7 @@ function mapDzTrack(t: any, albumName?: string, albumCover?: string) {
     artistId: String(t.artist?.id ?? ""),
     album: albumName ?? t.album?.title,
     duration: t.duration,
-    thumbnail: albumCover ?? t.album?.cover_medium ?? t.artist?.picture_medium,
+    thumbnail: albumCover ?? t.album?.cover_medium ?? t.album?.cover_big ?? t.album?.cover_small ?? t.album?.cover ?? t.artist?.picture_medium ?? t.artist?.picture_big ?? t.artist?.picture_small ?? t.artist?.picture ?? null,
     previewUrl: t.preview,
   };
 }
@@ -133,7 +133,7 @@ function mapDzAlbum(a: any) {
     id: String(a.id),
     name: a.title,
     artist: a.artist?.name,
-    thumbnail: a.cover_medium,
+    thumbnail: a.cover_medium ?? a.cover_big ?? a.cover_small ?? a.cover ?? null,
     trackCount: a.nb_tracks,
   };
 }
@@ -143,7 +143,7 @@ function mapDzArtist(a: any) {
     type: "artist" as const,
     id: String(a.id),
     name: a.name,
-    thumbnail: a.picture_medium,
+    thumbnail: a.picture_medium ?? a.picture_big ?? a.picture_small ?? a.picture ?? null,
     trackCount: a.nb_album,
   };
 }
