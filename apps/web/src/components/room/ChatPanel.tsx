@@ -324,10 +324,11 @@ export function ChatPanel({
       <CardContent className="room-chat-body flex min-h-0 flex-1 flex-col overflow-hidden p-0">
         {typingUsers && typingUsers.length > 0 && (
           <div className="flex shrink-0 items-center gap-2.5 border-b border-white/[0.04] px-4 py-2">
-            <div className="flex items-center gap-[3px]">
-              <span className="typing-dot" />
-              <span className="typing-dot" />
-              <span className="typing-dot" />
+            <div className="flex items-center gap-[2px]">
+              <span className="typing-bar" />
+              <span className="typing-bar" />
+              <span className="typing-bar" />
+              <span className="typing-bar" />
             </div>
             <p className="truncate text-[13px] font-medium text-[#aebac1]">
               {typingUsers.length === 1
