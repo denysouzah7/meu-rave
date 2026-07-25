@@ -24,6 +24,7 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   ChatMessage,
+  MessageReaction,
   Participant,
   Sticker,
   StickerPack,
@@ -124,6 +125,8 @@ type Props = {
   onDelete: (messageId: string) => void;
   onPin: (messageId: string, isPinned: boolean) => void;
   onUserClick?: (userId: string) => void;
+  onEdit: (messageId: string, body: string) => void;
+  onReact: (messageId: string, emoji: string) => void;
   typingUsers?: string[];
   onTyping?: () => void;
 };
@@ -144,12 +147,16 @@ export function ChatPanel({
   onDelete,
   onPin,
   onUserClick,
+  onEdit,
+  onReact,
   typingUsers,
   onTyping,
 }: Props) {
   const [body, setBody] = React.useState("");
   const [replyTo, setReplyTo] = React.useState<ChatMessage | null>(null);
-  const [openActionsId, setOpenActionsId] = React.useState<string | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = React.useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = React.useState<string | null>(null);
+  const [editBody, setEditBody] = React.useState("");
   const [showStickers, setShowStickers] = React.useState(false);
   const [showAttachments, setShowAttachments] = React.useState(false);
   const [showPollComposer, setShowPollComposer] = React.useState(false);
@@ -223,7 +230,7 @@ export function ChatPanel({
   }, [body]);
 
   React.useEffect(() => {
-    const closeActions = () => setOpenActionsId(null);
+    const closeActions = () => setSelectedMessageId(null);
     document.addEventListener("pointerdown", closeActions);
     return () => document.removeEventListener("pointerdown", closeActions);
   }, []);
@@ -233,6 +240,15 @@ export function ChatPanel({
   );
 
   const submit = React.useCallback(() => {
+    if (editingMessageId) {
+      if (!editBody.trim()) return;
+      onEdit(editingMessageId, editBody.trim());
+      setEditingMessageId(null);
+      setEditBody("");
+      setBody("");
+      setReplyTo(null);
+      return;
+    }
     if (!body.trim() || !canChat) return;
     onSend({
       type: "text",
@@ -245,7 +261,7 @@ export function ChatPanel({
     window.requestAnimationFrame(() => {
       messageBoxRef.current?.focus({ preventScroll: true });
     });
-  }, [body, canChat, onSend, replyTo?.id]);
+  }, [body, canChat, onSend, replyTo?.id, editingMessageId, editBody, onEdit]);
 
   const sendImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -339,6 +355,82 @@ export function ChatPanel({
             </p>
           </div>
         )}
+        {selectedMessageId && (() => {
+          const msg = messageById.get(selectedMessageId);
+          if (!msg) return null;
+          const isOwn = msg.userId === currentUserId;
+          const canEdit = isOwn && msg.type === "text" && Date.now() - new Date(msg.createdAt).getTime() < 7 * 60 * 1000;
+          const ownCanDelete = isOwn;
+          return (
+            <div className="flex shrink-0 items-center justify-between border-b border-white/[0.04] bg-[#182229] px-4 py-2">
+              {isOwn ? (
+                <div className="flex items-center gap-3">
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 text-[13px] font-medium text-[#aebac1] transition hover:text-white"
+                      onClick={() => {
+                        setEditBody(msg.body ?? "");
+                        setEditingMessageId(msg.id);
+                        setSelectedMessageId(null);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Editar
+                    </button>
+                  )}
+                  {ownCanDelete && (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 text-[13px] font-medium text-red-400 transition hover:text-red-300"
+                      onClick={() => {
+                        onDelete(msg.id);
+                        setSelectedMessageId(null);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Apagar
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-1">
+                  {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => {
+                    const hasReacted = msg.reactions?.some(
+                      (r) => r.emoji === emoji && r.userId === currentUserId,
+                    );
+                    return (
+                      <button
+                        key={emoji}
+                        type="button"
+                        className={cn(
+                          "flex h-9 w-9 items-center justify-center rounded-full text-lg transition",
+                          hasReacted
+                            ? "bg-white/[0.12]"
+                            : "hover:bg-white/[0.06]",
+                        )}
+                        onClick={() => {
+                          onReact(msg.id, emoji);
+                          setSelectedMessageId(null);
+                        }}
+                      >
+                        {emoji}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <button
+                type="button"
+                aria-label="Fechar"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-[#8696a0] transition hover:bg-white/[0.06] hover:text-white"
+                onClick={() => setSelectedMessageId(null)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        })()}
         <MessageList
           messages={messages}
           currentUserId={currentUserId}
@@ -346,16 +438,16 @@ export function ChatPanel({
           messageById={messageById}
           messageBackgroundStyle={messageBackgroundStyle}
           messagesViewportRef={messagesViewportRef}
-          openActionsId={openActionsId}
+          selectedMessageId={selectedMessageId}
           ownedStickerIds={ownedStickerIds}
-          onToggleActions={(id) =>
-            setOpenActionsId((current) =>
+          onSelectMessage={(id) =>
+            setSelectedMessageId((current) =>
               current === id ? null : id,
             )
           }
           onReply={(message) => {
             setReplyTo(message);
-            setOpenActionsId(null);
+            setSelectedMessageId(null);
             const focusBox = () => {
               const box = messageBoxRef.current;
               if (!box) return;
@@ -371,23 +463,23 @@ export function ChatPanel({
             if (text) {
               void navigator.clipboard.writeText(text);
             }
-            setOpenActionsId(null);
+            setSelectedMessageId(null);
           }}
           onLike={(messageId) => {
             onLike(messageId);
-            setOpenActionsId(null);
+            setSelectedMessageId(null);
           }}
           onDelete={(messageId) => {
             onDelete(messageId);
-            setOpenActionsId(null);
+            setSelectedMessageId(null);
           }}
           onPin={(messageId, isPinned) => {
             onPin(messageId, isPinned);
-            setOpenActionsId(null);
+            setSelectedMessageId(null);
           }}
           onSaveSticker={(stickerId) => {
             saveSticker.mutate(stickerId);
-            setOpenActionsId(null);
+            setSelectedMessageId(null);
           }}
           onOpenStickerDetails={(message) =>
             setSelectedStickerMessage(message)
@@ -395,6 +487,27 @@ export function ChatPanel({
           onPollVote={onPollVote}
           onUserClick={onUserClick}
         />
+
+        {editingMessageId && (() => {
+          const editingMessage = messageById.get(editingMessageId);
+          if (!editingMessage) return null;
+          return (
+            <div className="flex items-center gap-2 border-t border-white/[0.06] bg-[#182229] px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold text-primary">Editar mensagem</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[#8696a0] transition hover:bg-white/[0.06] hover:text-white"
+                  onClick={() => setEditingMessageId(null)}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="room-chat-composer sticky bottom-0 z-30 shrink-0 bg-[#0b141a]/98 shadow-[0_-10px_22px_rgba(0,0,0,0.20)] backdrop-blur max-sm:static">
           {replyTo && (
@@ -485,9 +598,13 @@ export function ChatPanel({
                 <Textarea
                   ref={messageBoxRef}
                   rows={1}
-                  value={body}
+                  value={editingMessageId ? editBody : body}
                   onChange={(event) => {
-                    setBody(event.target.value);
+                    if (editingMessageId) {
+                      setEditBody(event.target.value);
+                    } else {
+                      setBody(event.target.value);
+                    }
                     const now = Date.now();
                     if (now - lastTypingEmitRef.current > 2000) {
                       lastTypingEmitRef.current = now;
@@ -501,7 +618,7 @@ export function ChatPanel({
                     }
                   }}
                   disabled={!canChat}
-                  placeholder={canChat ? "Mensagem" : "Chat restrito"}
+                  placeholder={editingMessageId ? "Editar mensagem" : canChat ? "Mensagem" : "Chat restrito"}
                   autoComplete="off"
                   autoCorrect="on"
                   autoCapitalize="sentences"
@@ -579,11 +696,11 @@ export function ChatPanel({
                   )}
                 </div>
               </div>
-              {body.trim() ? (
+              {body.trim() || editingMessageId ? (
                 <Button
                   type="button"
                   size="icon"
-                  aria-label="Enviar"
+                  aria-label={editingMessageId ? "Confirmar edicao" : "Enviar"}
                   disabled={!canChat}
                   className="h-11 w-11 shrink-0 rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
                   onPointerDown={(event) => {
@@ -601,7 +718,11 @@ export function ChatPanel({
                     submit();
                   }}
                 >
-                  <Send className="h-5 w-5" />
+                  {editingMessageId ? (
+                    <Check className="h-5 w-5" />
+                  ) : (
+                    <Send className="h-5 w-5" />
+                  )}
                 </Button>
               ) : (
                 <AudioRecorder
@@ -656,9 +777,9 @@ type MessageListProps = {
   messageById: Map<string, ChatMessage>;
   messageBackgroundStyle: React.CSSProperties | undefined;
   messagesViewportRef: React.MutableRefObject<HTMLDivElement | null>;
-  openActionsId: string | null;
+  selectedMessageId: string | null;
   ownedStickerIds: Set<string>;
-  onToggleActions: (id: string) => void;
+  onSelectMessage: (id: string) => void;
   onReply: (message: ChatMessage) => void;
   onCopy: (text: string | null | undefined) => void;
   onLike: (messageId: string) => void;
@@ -677,9 +798,9 @@ const MessageList = React.memo(function MessageList({
   messageById,
   messageBackgroundStyle,
   messagesViewportRef,
-  openActionsId,
+  selectedMessageId,
   ownedStickerIds,
-  onToggleActions,
+  onSelectMessage,
   onReply,
   onCopy,
   onLike,
@@ -730,8 +851,7 @@ const MessageList = React.memo(function MessageList({
                 own={message.userId === currentUserId}
                 grouped={grouped}
                 canModerate={canModerate}
-                actionsOpen={openActionsId === message.id}
-                onToggleActions={() => onToggleActions(message.id)}
+                onSelect={() => onSelectMessage(message.id)}
                 onReply={() => onReply(message)}
                 onCopy={() => onCopy(message.body)}
                 onLike={() => onLike(message.id)}
@@ -757,8 +877,7 @@ const MessageBubble = React.memo(function MessageBubble({
   own,
   grouped,
   canModerate,
-  actionsOpen,
-  onToggleActions,
+  onSelect,
   onReply,
   onCopy,
   onLike,
@@ -775,8 +894,7 @@ const MessageBubble = React.memo(function MessageBubble({
   own: boolean;
   grouped: boolean;
   canModerate: boolean;
-  actionsOpen: boolean;
-  onToggleActions: () => void;
+  onSelect: () => void;
   onReply: () => void;
   onCopy: () => void;
   onLike: () => void;
@@ -822,7 +940,7 @@ const MessageBubble = React.memo(function MessageBubble({
       pointerStart.current = null;
       setDragX(0);
       setIsDragging(false);
-      onToggleActions();
+      onSelect();
     }, 520);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -1028,38 +1146,16 @@ const MessageBubble = React.memo(function MessageBubble({
             className={cn(
               "absolute top-1 grid h-7 w-7 place-items-center rounded-full bg-black/15 text-[#d1d7db] opacity-0 transition hover:bg-black/25",
               own ? "left-1" : "right-1",
-              actionsOpen && "opacity-100",
               "group-hover:opacity-100 group-focus-within:opacity-100",
             )}
             onClick={(event) => {
               event.stopPropagation();
-              onToggleActions();
+              onSelect();
             }}
             onPointerDown={(event) => event.stopPropagation()}
           >
             <ChevronDown className="h-4 w-4" />
           </button>
-
-          {actionsOpen && (
-            <CompactActionMenu
-              own={own}
-              canCopy={canCopy}
-              canModerate={canModerate}
-              canDelete={canDelete}
-              canSaveSticker={canSaveSticker}
-              isPinned={message.isPinned}
-              onReply={onReply}
-              onLike={onLike}
-              onCopy={onCopy}
-              onSaveSticker={() => {
-                if (message.stickerId) {
-                  onSaveSticker(message.stickerId);
-                }
-              }}
-              onPin={onPin}
-              onDelete={onDelete}
-            />
-          )}
         </div>
       </div>
     </div>
@@ -1091,6 +1187,9 @@ function MessageMeta({
           <Heart className="h-2.5 w-2.5 fill-current" />
           {message.likes}
         </span>
+      )}
+      {message.editedAt && (
+        <span className="text-[9px]">editado</span>
       )}
       <span>{timeLabel(message.createdAt)}</span>
     </span>
@@ -1585,112 +1684,6 @@ function PollComposer({
 
       {error && <p className="mt-2 text-xs text-red-100">{error}</p>}
     </div>
-  );
-}
-
-function CompactActionMenu({
-  own,
-  canCopy,
-  canModerate,
-  canDelete,
-  canSaveSticker,
-  isPinned,
-  onReply,
-  onLike,
-  onCopy,
-  onSaveSticker,
-  onPin,
-  onDelete,
-}: {
-  own: boolean;
-  canCopy: boolean;
-  canModerate: boolean;
-  canDelete: boolean;
-  canSaveSticker: boolean;
-  isPinned: boolean;
-  onReply: () => void;
-  onLike: () => void;
-  onCopy: () => void;
-  onSaveSticker: () => void;
-  onPin: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div
-      className={cn(
-        "absolute -top-11 z-40 flex w-max max-w-[calc(100vw-32px)] items-center gap-1 rounded-full bg-[#233138] p-1 text-[#e9edef] shadow-2xl ring-1 ring-black/40",
-        own ? "right-0" : "left-0",
-      )}
-      onClick={(event) => event.stopPropagation()}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      <ActionIconButton
-        icon={<Reply className="h-4 w-4" />}
-        label="Responder"
-        onClick={onReply}
-      />
-      <ActionIconButton
-        icon={<Heart className="h-4 w-4" />}
-        label="Curtir"
-        onClick={onLike}
-      />
-      {canCopy && (
-        <ActionIconButton
-          icon={<Copy className="h-4 w-4" />}
-          label="Copiar"
-          onClick={onCopy}
-        />
-      )}
-      {canSaveSticker && (
-        <ActionIconButton
-          icon={<Plus className="h-4 w-4" />}
-          label="Salvar figurinha"
-          onClick={onSaveSticker}
-        />
-      )}
-      {canModerate && (
-        <ActionIconButton
-          icon={<Pin className="h-4 w-4" />}
-          label={isPinned ? "Desfixar" : "Fixar"}
-          onClick={onPin}
-        />
-      )}
-      {canDelete && (
-        <ActionIconButton
-          icon={<Trash2 className="h-4 w-4" />}
-          label="Excluir"
-          onClick={onDelete}
-          destructive
-        />
-      )}
-    </div>
-  );
-}
-
-function ActionIconButton({
-  icon,
-  label,
-  onClick,
-  destructive = false,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  destructive?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      className={cn(
-        "grid h-9 w-9 place-items-center rounded-full transition hover:bg-white/[0.08]",
-        destructive ? "text-red-200" : "text-[#d1d7db]",
-      )}
-      onClick={onClick}
-    >
-      {icon}
-    </button>
   );
 }
 
@@ -2708,4 +2701,17 @@ function replyPreview(message: ChatMessage) {
   if (message.type === "image") return "Imagem";
   if (message.type === "poll") return message.poll?.question ?? "Enquete";
   return message.body || "Mensagem";
+}
+
+function groupReactions(reactions: MessageReaction[]) {
+  const grouped = new Map<string, { emoji: string; count: number }>();
+  for (const r of reactions) {
+    const existing = grouped.get(r.emoji);
+    if (existing) {
+      existing.count++;
+    } else {
+      grouped.set(r.emoji, { emoji: r.emoji, count: 1 });
+    }
+  }
+  return Array.from(grouped.values());
 }

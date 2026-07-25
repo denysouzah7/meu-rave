@@ -19,6 +19,7 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   ChatMessage,
+  MessageReaction,
   Participant,
   PlaybackState,
   Room,
@@ -313,6 +314,32 @@ export function RoomPage() {
       },
     );
 
+    socket.on(
+      "chat:edit",
+      (payload: { message: ChatMessage }) => {
+        setMessages((value) =>
+          value.map((msg) =>
+            msg.id === payload.message.id ? payload.message : msg,
+          ),
+        );
+      },
+    );
+
+    socket.on(
+      "chat:react",
+      (
+        payload: { messageId: string; reactions: MessageReaction[] },
+      ) => {
+        setMessages((value) =>
+          value.map((msg) =>
+            msg.id === payload.messageId
+              ? { ...msg, reactions: payload.reactions }
+              : msg,
+          ),
+        );
+      },
+    );
+
     return () => {
       socket.emit("room:leave");
       socket.disconnect();
@@ -571,6 +598,12 @@ export function RoomPage() {
               socket()?.emit("chat:pin", { messageId, isPinned })
             }
             onUserClick={(userId) => setSelectedUserId(userId)}
+            onEdit={(messageId, body) =>
+              socketRef.current?.emit("chat:edit", { messageId, body })
+            }
+            onReact={(messageId, emoji) =>
+              socketRef.current?.emit("chat:react", { messageId, emoji })
+            }
             typingUsers={Array.from(typingUsers.values())}
             onTyping={() => socketRef.current?.emit("chat:typing")}
           />

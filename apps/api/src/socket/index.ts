@@ -26,6 +26,8 @@ import {
   pinMessage,
   softDeleteMessage,
   toggleMessageLike,
+  toggleMessageReaction,
+  updateMessage,
   userCanDeleteMessage,
   votePoll,
 } from "../services/message.service.js";
@@ -267,6 +269,44 @@ export function registerSocket(io: Server) {
           io.to(channel(socket.data.roomId)).emit("chat:pin", {
             messageId: updated.id,
             isPinned: updated.isPinned,
+          });
+        } catch (error) {
+          socketError(socket, error);
+        }
+      },
+    );
+
+    socket.on("chat:edit", (payload: { messageId: string; body: string }) => {
+      try {
+        if (!socket.data.roomId) {
+          throw forbidden("Entre em uma sala primeiro");
+        }
+        const message = updateMessage(
+          payload.messageId,
+          socket.data.userId,
+          payload.body,
+        );
+        io.to(channel(socket.data.roomId)).emit("chat:edit", { message });
+      } catch (error) {
+        socketError(socket, error);
+      }
+    });
+
+    socket.on(
+      "chat:react",
+      (payload: { messageId: string; emoji: string }) => {
+        try {
+          if (!socket.data.roomId) {
+            throw forbidden("Entre em uma sala primeiro");
+          }
+          const reactions = toggleMessageReaction(
+            payload.messageId,
+            socket.data.userId,
+            payload.emoji,
+          );
+          io.to(channel(socket.data.roomId)).emit("chat:react", {
+            messageId: payload.messageId,
+            reactions,
           });
         } catch (error) {
           socketError(socket, error);

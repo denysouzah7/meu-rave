@@ -441,6 +441,7 @@ export const messages = sqliteTable(
     }),
     pollId: text("pollId").references(() => polls.id, { onDelete: "set null" }),
     isPinned: integer("isPinned", { mode: "boolean" }).notNull().default(false),
+    editedAt: integer("editedAt", { mode: "timestamp_ms" }),
     deletedAt: integer("deletedAt", { mode: "timestamp_ms" }),
     createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
   },
@@ -471,6 +472,25 @@ export const messageLikes = sqliteTable(
   (table) => ({
     pk: primaryKey({ columns: [table.messageId, table.userId] }),
     userIdx: index("message_likes_user_idx").on(table.userId),
+  }),
+);
+
+export const messageReactions = sqliteTable(
+  "message_reactions",
+  {
+    messageId: text("messageId")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    emoji: text("emoji").notNull(),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.messageId, table.userId, table.emoji] }),
+    userIdx: index("message_reactions_user_idx").on(table.userId),
   }),
 );
 

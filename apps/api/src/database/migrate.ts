@@ -356,6 +356,32 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS "messages_poll_idx" ON "messages" ("pollId");
   `);
 
+  const msgReactionColumns = sqlite
+    .prepare("PRAGMA table_info(message_reactions)")
+    .all() as Array<{ name: string }>;
+  if (msgReactionColumns.length === 0) {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS "message_reactions" (
+        "messageId" TEXT NOT NULL REFERENCES "messages"("id") ON DELETE CASCADE,
+        "userId" TEXT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+        "emoji" TEXT NOT NULL,
+        "createdAt" INTEGER NOT NULL,
+        "updatedAt" INTEGER NOT NULL,
+        PRIMARY KEY ("messageId", "userId", "emoji")
+      );
+      CREATE INDEX IF NOT EXISTS "message_reactions_user_idx" ON "message_reactions" ("userId");
+    `);
+  }
+
+  const msgColumns = sqlite
+    .prepare("PRAGMA table_info(messages)")
+    .all() as Array<{ name: string }>;
+  if (!msgColumns.some((column) => column.name === "editedAt")) {
+    sqlite.exec(`
+      ALTER TABLE "messages" ADD COLUMN "editedAt" INTEGER;
+    `);
+  }
+
   const existing = sqlite
     .prepare("SELECT value FROM settings WHERE key = ?")
     .get("messageRetentionDays");

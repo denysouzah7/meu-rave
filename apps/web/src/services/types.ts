@@ -90,6 +90,7 @@ export type ChatMessage = {
   imageUploadId?: string | null;
   pollId?: string | null;
   isPinned: boolean;
+  editedAt?: string | null;
   deletedAt?: string | null;
   createdAt: string;
   authorName?: string | null;
@@ -107,6 +108,14 @@ export type ChatMessage = {
   imageMimeType?: string | null;
   poll?: Poll | null;
   likes?: number;
+  reactions?: MessageReaction[];
+};
+
+export type MessageReaction = {
+  emoji: string;
+  userId: string;
+  userName: string | null;
+  createdAt: string;
 };
 
 export type PollOption = {

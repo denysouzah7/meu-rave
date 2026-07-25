@@ -4,6 +4,7 @@ import { db } from "../database/client.js";
 import {
   audios,
   messageLikes,
+  messageReactions,
   messages,
   pollOptions,
   pollVotes,
@@ -59,6 +60,7 @@ export function listMessages(roomId: string, limit = 80, currentUserId?: string 
       imageUploadId: messages.imageUploadId,
       pollId: messages.pollId,
       isPinned: messages.isPinned,
+      editedAt: messages.editedAt,
       deletedAt: messages.deletedAt,
       createdAt: messages.createdAt,
       authorName: users.name,
@@ -99,13 +101,41 @@ export function listMessages(roomId: string, limit = 80, currentUserId?: string 
           .all()
       : [];
   const likes = new Map(likeCounts.map((item) => [item.messageId, item.value]));
+  const reactions =
+    ids.length > 0
+      ? db
+          .select({
+            messageId: messageReactions.messageId,
+            emoji: messageReactions.emoji,
+            userId: messageReactions.userId,
+            userName: users.name,
+            createdAt: messageReactions.createdAt,
+          })
+          .from(messageReactions)
+          .leftJoin(users, eq(messageReactions.userId, users.id))
+          .where(inArray(messageReactions.messageId, ids))
+          .all()
+      : [];
+  const reactionsByMessage = new Map<string, Array<{ emoji: string; userId: string; userName: string | null; createdAt: Date }>>();
+  for (const r of reactions) {
+    if (!reactionsByMessage.has(r.messageId)) {
+      reactionsByMessage.set(r.messageId, []);
+    }
+    reactionsByMessage.get(r.messageId)!.push({
+      emoji: r.emoji,
+      userId: r.userId,
+      userName: r.userName,
+      createdAt: r.createdAt,
+    });
+  }
   const pollIds = [...new Set(rows.map((row) => row.pollId).filter((pollId): pollId is string => Boolean(pollId)))];
   const pollMap = getPollDtos(pollIds, currentUserId);
 
   return rows.map((row) => ({
     ...row,
     likes: likes.get(row.id) ?? 0,
-    poll: row.pollId ? pollMap.get(row.pollId) ?? null : null
+    poll: row.pollId ? pollMap.get(row.pollId) ?? null : null,
+    reactions: reactionsByMessage.get(row.id) ?? [],
   }));
 }
 
@@ -392,6 +422,116 @@ export function toggleMessageLike(messageId: string, userId: string) {
     .where(eq(messageLikes.messageId, messageId))
     .get();
   return { messageId, likes: row?.value ?? 0 };
+}
+
+export function updateMessage(messageId: string, userId: string, body: string) {
+  const message = db
+    .select()
+    .from(messages)
+    .where(eq(messages.id, messageId))
+    .get();
+
+  if (!message) {
+    throw notFound("Mensagem nao encontrada");
+  }
+  if (message.userId !== userId) {
+    throw badRequest("Voce nao pode editar essa mensagem");
+  }
+  if (message.deletedAt) {
+    throw badRequest("Mensagem deletada nao pode ser editada");
+  }
+  if (message.type !== "text") {
+    throw badRequest("Apenas mensagens de texto podem ser editadas");
+  }
+
+  const sevenMin = 7 * 60 * 1000;
+  if (Date.now() - message.createdAt.getTime() > sevenMin) {
+    throw badRequest("So e possivel editar em ate 7 minutos");
+  }
+
+  const updated = db
+    .update(messages)
+    .set({ body, editedAt: now() })
+    .where(eq(messages.id, messageId))
+    .returning()
+    .get();
+
+  return updated;
+}
+
+export function toggleMessageReaction(
+  messageId: string,
+  userId: string,
+  emoji: string,
+) {
+  const message = db
+    .select()
+    .from(messages)
+    .where(eq(messages.id, messageId))
+    .get();
+
+  if (!message) {
+    throw notFound("Mensagem nao encontrada");
+  }
+  if (message.deletedAt) {
+    throw badRequest("Mensagem deletada");
+  }
+
+  const sevenMin = 7 * 60 * 1000;
+  if (Date.now() - message.createdAt.getTime() > sevenMin) {
+    throw badRequest("So e possivel reagir em ate 7 minutos");
+  }
+
+  const existing = db
+    .select()
+    .from(messageReactions)
+    .where(
+      and(
+        eq(messageReactions.messageId, messageId),
+        eq(messageReactions.userId, userId),
+        eq(messageReactions.emoji, emoji),
+      ),
+    )
+    .get();
+
+  if (existing) {
+    db.delete(messageReactions)
+      .where(
+        and(
+          eq(messageReactions.messageId, messageId),
+          eq(messageReactions.userId, userId),
+          eq(messageReactions.emoji, emoji),
+        ),
+      )
+      .run();
+  } else {
+    db.insert(messageReactions)
+      .values({ messageId, userId, emoji, createdAt: now(), updatedAt: now() })
+      .run();
+  }
+
+  return getMessageReactions(messageId);
+}
+
+export function getMessageReactions(messageId: string) {
+  const rows = db
+    .select({
+      emoji: messageReactions.emoji,
+      userId: messageReactions.userId,
+      createdAt: messageReactions.createdAt,
+      userName: users.name,
+    })
+    .from(messageReactions)
+    .innerJoin(users, eq(messageReactions.userId, users.id))
+    .where(eq(messageReactions.messageId, messageId))
+    .all();
+
+  return rows.map((r) => ({
+    emoji: r.emoji,
+    userId: r.userId,
+    userName: r.userName,
+    createdAt: r.createdAt,
+  }));
 }
 
 export function softDeleteMessage(messageId: string) {
