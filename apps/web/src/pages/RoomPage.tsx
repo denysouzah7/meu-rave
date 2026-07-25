@@ -29,6 +29,8 @@ import type {
 } from "@/services/types";
 import { API_URL, api, resolveMediaUrl } from "@/services/api";
 import { useMe, useRoom } from "@/hooks/useApi";
+import { useActiveStatusRooms, useRoomStatuses } from "@/hooks/useStatus";
+import { StatusViewer } from "@/components/room/StatusViewer";
 import { WatchPlayer } from "@/components/room/WatchPlayer";
 import { ChatPanel } from "@/components/room/ChatPanel";
 import { ParticipantsPanel } from "@/components/room/ParticipantsPanel";
@@ -98,6 +100,11 @@ export function RoomPage() {
   const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
   const [typingUsers, setTypingUsers] = React.useState<Map<string, string>>(new Map());
   const typingTimeoutsRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [statusViewerOpen, setStatusViewerOpen] = React.useState(false);
+  const { data: activeStatusRoomIds } = useActiveStatusRooms();
+  const activeStatusSet = React.useMemo(() => new Set(activeStatusRoomIds ?? []), [activeStatusRoomIds]);
+  const hasStatus = room ? activeStatusSet.has(room.id) : false;
+  const { data: roomStatusData } = useRoomStatuses(slug ?? "");
   const roomViewportRef = React.useRef<HTMLElement | null>(null);
   const socketRef = React.useRef<Socket | null>(null);
   const roomRadioUrl =
@@ -453,18 +460,28 @@ export function RoomPage() {
           type="button"
           className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-1 text-left active:bg-white/[0.06]"
           onClick={() => {
-            setRetentionInfoOpen(false);
-            setRoomInfoOpen(true);
+            if (hasStatus) {
+              setStatusViewerOpen(true);
+            } else {
+              setRetentionInfoOpen(false);
+              setRoomInfoOpen(true);
+            }
           }}
         >
-          <Avatar
-            name={room.name}
-            src={resolveMediaUrl(room.bannerUrl)}
-            className={cn(
-              "h-11 w-11 border border-primary/30 bg-primary/[0.16] max-sm:h-10 max-sm:w-10",
-              isGroup ? "rounded-full" : "rounded-none",
-            )}
-          />
+          <span className={cn("relative inline-flex", hasStatus && "rounded-full p-[2px] bg-[#00a884]")}>
+            <Avatar
+              name={room.name}
+              src={resolveMediaUrl(room.bannerUrl)}
+              className={cn(
+                "h-11 w-11 border bg-primary/[0.16] max-sm:h-10 max-sm:w-10",
+                hasStatus
+                  ? "rounded-full border-[#00a884]"
+                  : isGroup
+                    ? "rounded-full border-primary/30"
+                    : "rounded-none border-primary/30",
+              )}
+            />
+          </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[15px] font-bold text-white max-sm:text-sm">
               {room.name}
@@ -624,6 +641,13 @@ export function RoomPage() {
         />
       )}
 
+      {statusViewerOpen && roomStatusData?.statuses && roomStatusData.statuses.length > 0 && (
+        <StatusViewer
+          statuses={roomStatusData.statuses}
+          initialIndex={0}
+          onClose={() => setStatusViewerOpen(false)}
+        />
+      )}
       {selectedUserId && (
         <UserProfileDialog
           userId={selectedUserId}

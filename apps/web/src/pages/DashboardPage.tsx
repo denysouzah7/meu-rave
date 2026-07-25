@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Calendar,
   Disc3,
@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { resolveMediaUrl } from "@/services/api";
 import { useMe, useRooms } from "@/hooks/useApi";
+import { useActiveStatusRooms, useRoomStatuses } from "@/hooks/useStatus";
+import { StatusViewer } from "@/components/room/StatusViewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,6 +35,12 @@ export function DashboardPage() {
   const groupRooms = rooms.filter((room) => room.type === "group");
   const activeRooms = activeTab === "group" ? groupRooms : raveRooms;
   const activeLabel = activeTab === "group" ? "grupo" : "rave";
+  const { data: activeStatusRoomIds } = useActiveStatusRooms();
+  const activeStatusSet = React.useMemo(
+    () => new Set(activeStatusRoomIds ?? []),
+    [activeStatusRoomIds],
+  );
+  const [viewerSlug, setViewerSlug] = React.useState<string | null>(null);
   const emptyIcon =
     activeTab === "group" ? (
       <MessageCircle className="h-5 w-5" />
@@ -145,21 +153,41 @@ export function DashboardPage() {
                   room.creatorId === me?.user.id ||
                   joinedRoomSlugs.has(room.slug),
                 )}
+                hasStatus={activeStatusSet.has(room.id)}
+                onViewStatus={() => setViewerSlug(room.slug)}
               />
             ))}
           </div>
         )}
       </Tabs>
+
+      {viewerSlug && <StatusFetcher slug={viewerSlug} onClose={() => setViewerSlug(null)} />}
     </div>
+  );
+}
+
+function StatusFetcher({ slug, onClose }: { slug: string; onClose: () => void }) {
+  const { data, isLoading } = useRoomStatuses(slug);
+  if (isLoading || !data?.statuses?.length) return null;
+  return (
+    <StatusViewer
+      statuses={data.statuses}
+      initialIndex={0}
+      onClose={onClose}
+    />
   );
 }
 
 function RoomCard({
   room,
   joined,
+  hasStatus,
+  onViewStatus,
 }: {
   room: NonNullable<ReturnType<typeof useRooms>["data"]>["rooms"][number];
   joined: boolean;
+  hasStatus?: boolean;
+  onViewStatus?: () => void;
 }) {
   return (
     <Card className="group flex h-full flex-col overflow-hidden rounded-none border-white/10 bg-white/[0.035] transition hover:border-primary/[0.40] hover:bg-white/[0.055] hover:shadow-glow">
@@ -183,11 +211,21 @@ function RoomCard({
         )}
         {room.bannerUrl ? (
           room.type === "group" ? (
-            <img
-              src={resolveMediaUrl(room.bannerUrl)}
-              alt={room.name}
-              className="relative z-10 h-20 w-20 rounded-full border-2 border-primary/35 object-cover shadow-xl transition duration-300 group-hover:scale-[1.04]"
-            />
+            <button type="button" onClick={hasStatus ? onViewStatus : undefined} className={cn(
+              "relative z-10",
+              hasStatus && "cursor-pointer",
+            )}>
+              <img
+                src={resolveMediaUrl(room.bannerUrl)}
+                alt={room.name}
+                className={cn(
+                  "h-20 w-20 rounded-full object-cover shadow-xl transition duration-300 group-hover:scale-[1.04]",
+                  hasStatus
+                    ? "border-[3px] border-transparent ring-2 ring-[#00a884] ring-offset-2 ring-offset-black/40"
+                    : "border-2 border-primary/35",
+                )}
+              />
+            </button>
           ) : (
             <img
               src={resolveMediaUrl(room.bannerUrl)}
@@ -196,20 +234,24 @@ function RoomCard({
             />
           )
         ) : (
-          <div
-            className={cn(
-              "flex items-center justify-center bg-[linear-gradient(135deg,rgba(20,184,166,.20),rgba(236,72,153,.13),rgba(245,158,11,.12))]",
-              room.type === "group"
-                ? "relative z-10 h-20 w-20 rounded-full border-2 border-primary/35"
-                : "h-full w-full",
-            )}
+          <button type="button" onClick={hasStatus ? onViewStatus : undefined} className={cn(
+            "flex items-center justify-center bg-[linear-gradient(135deg,rgba(20,184,166,.20),rgba(236,72,153,.13),rgba(245,158,11,.12))]",
+            room.type === "group"
+              ? cn(
+                  "relative z-10 h-20 w-20 rounded-full",
+                  hasStatus
+                    ? "border-[3px] border-transparent ring-2 ring-[#00a884] ring-offset-2 ring-offset-black/40"
+                    : "border-2 border-primary/35",
+                )
+              : "h-full w-full",
+          )}
           >
             {room.type === "group" ? (
               <MessageCircle className="h-12 w-12 text-white/80" />
             ) : (
               <Disc3 className="h-12 w-12 text-white/80" />
             )}
-          </div>
+          </button>
         )}
         {room.type !== "group" && (
           <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/10" />
