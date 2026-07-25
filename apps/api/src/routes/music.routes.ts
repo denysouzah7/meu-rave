@@ -7,7 +7,7 @@ import {
   getArtistData,
   getYouTubeId,
 } from "../services/music.service.js";
-import ytdl from "@distube/ytdl-core";
+import youtubedl from "youtube-dl-exec";
 
 export async function musicRoutes(app: FastifyInstance) {
   app.get("/music/home", { preHandler: [authenticate] }, async () => {
@@ -44,15 +44,12 @@ export async function musicRoutes(app: FastifyInstance) {
   app.get("/music/stream/:videoId", { preHandler: [authenticate] }, async (req, reply) => {
     const { videoId } = req.params as { videoId: string };
     try {
-      const stream = ytdl(videoId, {
-        quality: "lowestaudio",
-        filter: "audioonly",
-        highWaterMark: 1 << 25,
-      });
-      reply.header("Content-Type", "audio/mpeg");
-      reply.header("Transfer-Encoding", "chunked");
-      reply.header("Cache-Control", "no-cache");
-      return reply.send(stream);
+      const url = await (youtubedl as any)(`https://www.youtube.com/watch?v=${videoId}`, {
+        format: "bestaudio",
+        getUrl: true,
+        noWarnings: true,
+      }) as string;
+      return reply.redirect(url.trim());
     } catch (err) {
       console.error("Stream error:", videoId, err);
       return reply.status(500).send({ error: "Stream failed" });
