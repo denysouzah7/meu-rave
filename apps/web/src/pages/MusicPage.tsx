@@ -414,7 +414,7 @@ function MiniPlayer({ video, isPlaying, isLoading, onTogglePlay, onNext, onPrev,
         <div className="h-full bg-primary transition-all duration-300" style={{ width: `${pct}%` }} />
       </div>
       <div className="mx-auto flex max-w-[1500px] items-center gap-3 px-4 py-2.5" onClick={onToggleExpand} style={{ cursor: "pointer" }}>
-        <div className="flex min-w-0 flex-1 items-center gap-3" onClick={(e) => { e.stopPropagation(); }}>
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           {video.thumbnail && <CoverImg src={video.thumbnail} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />}
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-white">{video.name}</p>
