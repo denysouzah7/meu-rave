@@ -77,11 +77,17 @@ export async function getAlbum(albumId: string) {
   });
 }
 
-/* Artist top songs */
-export async function getArtistTop(artistId: string) {
-  return cached(`dz_artist_${artistId}`, async () => {
-    const r = await dzFetch(`/artist/${artistId}/top?limit=20`);
-    return (r.data ?? []).map(mapDzTrack);
+/* Artist: top songs + albums */
+export async function getArtistData(artistId: string) {
+  return cached(`dz_artist_full_${artistId}`, async () => {
+    const [top, albums] = await Promise.all([
+      dzFetch(`/artist/${artistId}/top?limit=20`),
+      dzFetch(`/artist/${artistId}/albums`),
+    ]);
+    return {
+      songs: (top.data ?? []).map(mapDzTrack),
+      albums: (albums.data ?? []).map(mapDzAlbum),
+    };
   });
 }
 

@@ -4,7 +4,7 @@ import {
   getHomeSections,
   searchAll,
   getAlbum,
-  getArtistTop,
+  getArtistData,
   getYouTubeId,
 } from "../services/music.service.js";
 
@@ -27,10 +27,10 @@ export async function musicRoutes(app: FastifyInstance) {
     return { songs };
   });
 
-  app.get("/music/artist/:id/top", { preHandler: [authenticate] }, async (req) => {
+  app.get("/music/artist/:id", { preHandler: [authenticate] }, async (req) => {
     const { id } = req.params as { id: string };
-    const songs = await getArtistTop(id);
-    return { songs };
+    const data = await getArtistData(id);
+    return data;
   });
 
   app.get("/music/youtube-id", { preHandler: [authenticate] }, async (req) => {

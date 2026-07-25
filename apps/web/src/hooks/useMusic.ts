@@ -11,7 +11,6 @@ export type MusicItem = {
   duration?: number;
   thumbnail?: string | null;
   previewUrl?: string;
-  videoId?: string;
   trackCount?: number;
 };
 
@@ -44,10 +43,10 @@ export function useAlbum(id: string) {
   });
 }
 
-export function useArtistTop(id: string) {
-  return useQuery<{ songs: MusicItem[] }>({
+export function useArtistData(id: string) {
+  return useQuery<{ songs: MusicItem[]; albums: MusicItem[] }>({
     queryKey: ["music", "artist", id],
-    queryFn: () => api(`/music/artist/${id}/top`),
+    queryFn: () => api(`/music/artist/${id}`),
     enabled: Boolean(id),
   });
 }
