@@ -17,7 +17,7 @@ import {
   Plus,
   Reply,
   Send,
-  Smile,
+  StickerIcon,
   Trash2,
   X,
 } from "lucide-react";
@@ -435,7 +435,7 @@ export function ChatPanel({
             </div>
           )}
 
-          <div className="p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+          <div className="p-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
             <input
               ref={imageInputRef}
               type="file"
@@ -458,7 +458,7 @@ export function ChatPanel({
                     setShowStickers((value) => !value);
                   }}
                 >
-                  <Smile className="h-5 w-5" />
+                  <StickerIcon className="h-5 w-5" />
                 </Button>
                 <Textarea
                   ref={messageBoxRef}
@@ -918,7 +918,7 @@ const MessageBubble = React.memo(function MessageBubble({
           )}
         >
           {!own && !grouped && (
-            <p className="mb-0.5 truncate pr-5 text-[13px] font-semibold leading-[17px] text-primary">
+            <p className="mb-2 truncate pr-5 text-[13px] font-semibold leading-[17px] text-primary">
               {message.authorName ?? "Participante"}
             </p>
           )}
