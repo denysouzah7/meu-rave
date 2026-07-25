@@ -1,5 +1,5 @@
 import * as React from "react";
-import { X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { RoomStatus } from "@/services/types";
 import { resolveMediaUrl } from "@/services/api";
 
@@ -15,13 +15,24 @@ export function StatusViewer({
   const [index, setIndex] = React.useState(initialIndex);
   const status = statuses[index];
 
-  const goNext = () => {
-    if (index < statuses.length - 1) setIndex(index + 1);
+  const goNext = React.useCallback(() => {
+    if (index < statuses.length - 1) setIndex((i) => i + 1);
     else onClose();
-  };
-  const goPrev = () => {
-    if (index > 0) setIndex(index - 1);
-  };
+  }, [index, statuses.length, onClose]);
+
+  const goPrev = React.useCallback(() => {
+    if (index > 0) setIndex((i) => i - 1);
+  }, [index]);
+
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") goPrev();
+      else if (e.key === "ArrowRight") goNext();
+      else if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [goNext, goPrev, onClose]);
 
   if (!status) return null;
 
@@ -33,9 +44,9 @@ export function StatusViewer({
       {/* Progress bars */}
       <div className="absolute left-0 right-0 top-0 z-20 flex gap-1 px-2 pt-2">
         {statuses.map((s, i) => (
-          <div key={s.id} className="h-0.5 flex-1 rounded-full bg-white/30">
+          <div key={s.id} className="h-[3px] flex-1 rounded-full bg-white/30">
             <div
-              className="h-full rounded-full bg-white transition-all"
+              className="h-full rounded-full bg-white transition-[width] duration-300"
               style={{
                 width: i < index ? "100%" : i === index ? "100%" : "0%",
               }}
@@ -44,27 +55,21 @@ export function StatusViewer({
         ))}
       </div>
 
-      {/* Close */}
-      <button
-        type="button"
-        aria-label="Fechar"
-        className="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white"
-        onClick={onClose}
-      >
-        <X className="h-5 w-5" />
-      </button>
+      {/* Top bar */}
+      <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-2 pt-7">
+        <span />
+        <button
+          type="button"
+          aria-label="Fechar"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white"
+          onClick={onClose}
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
 
-      {/* Media - full screen */}
-      <div
-        className="relative flex flex-1 cursor-pointer items-center justify-center"
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          if (x < rect.width / 3 && index > 0) goPrev();
-          else if (x > (rect.width * 2) / 3 && index < total - 1) goNext();
-          else if (x > rect.width / 3 && x < (rect.width * 2) / 3) onClose();
-        }}
-      >
+      {/* Media area */}
+      <div className="relative flex flex-1 items-center justify-center">
         {isVideo ? (
           <video
             key={status.id}
@@ -73,38 +78,50 @@ export function StatusViewer({
             muted
             loop
             playsInline
-            className="h-full w-full object-contain"
+            className="max-h-full max-w-full"
           />
         ) : (
           <img
             key={status.id}
             src={resolveMediaUrl(status.mediaUrl)}
             alt={status.caption ?? "Status"}
-            className="h-full w-full object-contain"
+            className="max-h-full max-w-full object-contain"
           />
         )}
 
-        {/* Dark overlays on sides for navigation hint */}
+        {/* Left tap zone */}
         {index > 0 && (
-          <div
-            className="absolute left-0 top-0 h-full w-1/3"
-            onClick={(e) => { e.stopPropagation(); goPrev(); }}
-          />
+          <button
+            type="button"
+            aria-label="Anterior"
+            className="absolute left-0 top-0 flex h-full w-1/3 items-center justify-start pl-2"
+            onClick={goPrev}
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white">
+              <ChevronLeft className="h-6 w-6" />
+            </span>
+          </button>
         )}
+
+        {/* Right tap zone */}
         {index < total - 1 && (
-          <div
-            className="absolute right-0 top-0 h-full w-1/3"
-            onClick={(e) => { e.stopPropagation(); goNext(); }}
-          />
+          <button
+            type="button"
+            aria-label="Proximo"
+            className="absolute right-0 top-0 flex h-full w-1/3 items-center justify-end pr-2"
+            onClick={goNext}
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white">
+              <ChevronRight className="h-6 w-6" />
+            </span>
+          </button>
         )}
       </div>
 
       {/* Caption */}
       {status.caption && (
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-6 pt-12">
-          <p className="text-center text-sm text-white/90">
-            {status.caption}
-          </p>
+        <div className="bg-gradient-to-t from-black/60 to-transparent px-6 pb-6 pt-12">
+          <p className="text-center text-sm text-white/90">{status.caption}</p>
         </div>
       )}
     </div>
