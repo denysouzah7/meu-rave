@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.6.0",
+    "@distube/ytdl-core": "^4.16.12",
     "@fastify/cors": "^10.0.2",
     "@fastify/multipart": "^9.0.3",
     "@fastify/static": "^8.0.4",

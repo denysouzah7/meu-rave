@@ -7,6 +7,7 @@ import {
   getArtistData,
   getYouTubeId,
 } from "../services/music.service.js";
+import ytdl from "@distube/ytdl-core";
 
 export async function musicRoutes(app: FastifyInstance) {
   app.get("/music/home", { preHandler: [authenticate] }, async () => {
@@ -38,5 +39,23 @@ export async function musicRoutes(app: FastifyInstance) {
     if (!name) return { videoId: null };
     const videoId = await getYouTubeId(name, artist ?? "");
     return { videoId };
+  });
+
+  app.get("/music/stream/:videoId", { preHandler: [authenticate] }, async (req, reply) => {
+    const { videoId } = req.params as { videoId: string };
+    try {
+      const stream = ytdl(videoId, {
+        quality: "lowestaudio",
+        filter: "audioonly",
+        highWaterMark: 1 << 25,
+      });
+      reply.header("Content-Type", "audio/mpeg");
+      reply.header("Transfer-Encoding", "chunked");
+      reply.header("Cache-Control", "no-cache");
+      return reply.send(stream);
+    } catch (err) {
+      console.error("Stream error:", videoId, err);
+      return reply.status(500).send({ error: "Stream failed" });
+    }
   });
 }
