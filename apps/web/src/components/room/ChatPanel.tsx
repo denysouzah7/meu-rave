@@ -1176,7 +1176,7 @@ function MessageMeta({
           {message.likes}
         </span>
       )}
-      {message.editedAt && (
+      {message.editedAt && !own && (
         <span className="text-[9px]">editado</span>
       )}
       <span>{timeLabel(message.createdAt)}</span>
