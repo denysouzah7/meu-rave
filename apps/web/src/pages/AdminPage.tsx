@@ -132,6 +132,7 @@ export function AdminPage() {
   const [editing, setEditing] = React.useState<Room | null>(null);
   const [retention, setRetention] = React.useState(30);
   const [musicApiUrl, setMusicApiUrl] = React.useState("");
+  const [spiderxApiKey, setSpiderxApiKey] = React.useState("");
   const [copied, setCopied] = React.useState("");
   const [bannerUploading, setBannerUploading] = React.useState(false);
   const [bannerError, setBannerError] = React.useState("");
@@ -162,7 +163,7 @@ export function AdminPage() {
   const settingsQuery = useQuery({
     queryKey: ["admin", "settings"],
     queryFn: () =>
-      api<{ settings: { messageRetentionDays: number; musicApiUrl: string } }>("/admin/settings"),
+      api<{ settings: { messageRetentionDays: number; musicApiUrl: string; spiderxApiKey: string } }>("/admin/settings"),
     enabled: me?.user.role === "admin",
   });
 
@@ -173,7 +174,10 @@ export function AdminPage() {
   if (settingsQuery.data?.settings.musicApiUrl) {
       setMusicApiUrl(settingsQuery.data.settings.musicApiUrl);
     }
-  }, [settingsQuery.data?.settings.messageRetentionDays, settingsQuery.data?.settings.musicApiUrl]);
+  if (settingsQuery.data?.settings.spiderxApiKey) {
+      setSpiderxApiKey(settingsQuery.data.settings.spiderxApiKey);
+    }
+  }, [settingsQuery.data?.settings.messageRetentionDays, settingsQuery.data?.settings.musicApiUrl, settingsQuery.data?.settings.spiderxApiKey]);
 
   const saveRoom = useMutation({
     mutationFn: () => {
@@ -231,7 +235,7 @@ export function AdminPage() {
     mutationFn: () =>
       api("/admin/settings", {
         method: "PATCH",
-        json: { messageRetentionDays: retention, musicApiUrl },
+        json: { messageRetentionDays: retention, musicApiUrl, spiderxApiKey },
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["admin", "settings"] }),
@@ -1331,6 +1335,37 @@ export function AdminPage() {
                   value={musicApiUrl}
                   onChange={(event) => setMusicApiUrl(event.target.value)}
                   placeholder="http://localhost:4000"
+                />
+              </label>
+              <Button
+                onClick={() => saveSettings.mutate()}
+                disabled={saveSettings.isPending}
+              >
+                <Save className="h-4 w-4" />
+                Salvar ajuste
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="max-w-xl glass-panel">
+            <CardHeader>
+              <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-lg bg-white/[0.08] text-primary">
+                <Shield className="h-5 w-5" />
+              </div>
+              <CardTitle>SpiderX API</CardTitle>
+              <CardDescription>
+                Chave da API spiderx.com.br para download de áudio.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-muted-foreground">
+                  SpiderX API Key
+                </span>
+                <Input
+                  value={spiderxApiKey}
+                  onChange={(event) => setSpiderxApiKey(event.target.value)}
+                  placeholder="Evhpf0stTqRIdp7qLQWZ"
                 />
               </label>
               <Button

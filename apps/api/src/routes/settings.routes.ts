@@ -5,11 +5,13 @@ import {
   getSettings,
   updateMessageRetentionDays,
   updateMusicApiUrl,
+  updateSpiderxApiKey,
 } from "../services/settings.service.js";
 
 const settingsSchema = z.object({
   messageRetentionDays: z.number().int().min(1).max(365).optional(),
   musicApiUrl: z.string().optional(),
+  spiderxApiKey: z.string().optional(),
 });
 
 export async function settingsRoutes(app: FastifyInstance) {
@@ -28,6 +30,9 @@ export async function settingsRoutes(app: FastifyInstance) {
     }
     if (input.musicApiUrl !== undefined) {
       updateMusicApiUrl(input.musicApiUrl);
+    }
+    if (input.spiderxApiKey !== undefined) {
+      updateSpiderxApiKey(input.spiderxApiKey);
     }
     return { settings: getSettings() };
   });

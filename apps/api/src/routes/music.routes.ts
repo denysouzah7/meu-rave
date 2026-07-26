@@ -7,6 +7,7 @@ import {
   getArtistData,
   getYouTubeId,
 } from "../services/music.service.js";
+import { getSpiderxApiKey } from "../services/settings.service.js";
 import youtubedl from "youtube-dl-exec";
 
 export async function musicRoutes(app: FastifyInstance) {
@@ -39,6 +40,25 @@ export async function musicRoutes(app: FastifyInstance) {
     if (!name) return { videoId: null };
     const videoId = await getYouTubeId(name, artist ?? "");
     return { videoId };
+  });
+
+  app.get("/music/stream-audio", async (req, reply) => {
+    const { name, artist } = req.query as { name?: string; artist?: string };
+    if (!name) return reply.status(400).send({ error: "name is required" });
+    const apiKey = getSpiderxApiKey();
+    if (!apiKey) return reply.status(500).send({ error: "SpiderX API key not configured" });
+    try {
+      const search = encodeURIComponent(`${name} ${artist || ""}`.trim());
+      const res = await fetch(`https://api.spiderx.com.br/api/downloads/play-audio?search=${search}&api_key=${apiKey}`);
+      const data = await res.json() as any;
+      if (data?.url) {
+        return reply.redirect(data.url);
+      }
+      return reply.status(500).send({ error: "No audio URL returned" });
+    } catch (err) {
+      console.error("SpiderX error:", err);
+      return reply.status(500).send({ error: "SpiderX failed" });
+    }
   });
 
   app.get("/music/stream/:videoId", async (req, reply) => {

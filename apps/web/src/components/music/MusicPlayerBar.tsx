@@ -14,63 +14,27 @@ export function MusicPlayerBar() {
   const player = useMusicPlayer();
   const musicApiUrl = useMusicApiUrl() || API_URL;
   const [expanded, setExpanded] = React.useState(false);
-  const [resolvingIds, setResolvingIds] = React.useState<Set<string>>(new Set());
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const [audioPosition, setAudioPosition] = React.useState(0);
   const [audioDuration, setAudioDuration] = React.useState(0);
   const [audioLoading, setAudioLoading] = React.useState(false);
 
-  const resolveYtId = React.useCallback(async (song: PlayerSong) => {
-    if (song.youtubeId || player.preloadedIds.current.has(song.id)) return;
-    setResolvingIds(prev => new Set([...prev, song.id]));
-    try {
-      const data = await api<{ videoId: string | null }>(
-        `/music/youtube-id?name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist || "")}`
-      );
-      if (data.videoId) {
-        player.setYoutubeId(song.id, data.videoId);
-      }
-    } catch {}
-    setResolvingIds(prev => { const next = new Set(prev); next.delete(song.id); return next; });
-  }, [player]);
-
   React.useEffect(() => {
     if (!player.current) { audioRef.current?.pause(); return; }
     const song = player.current;
-    const cached = player.preloadedIds.current.get(song.id);
-    const ytId = song.youtubeId ?? cached;
-    if (ytId) {
-      const audio = audioRef.current;
-      if (!audio) return;
-      setAudioLoading(true);
-      audio.src = `${musicApiUrl}/api/music/stream/${ytId}`;
-      audio.load();
-      audio.play().then(() => {
-        setAudioLoading(false);
-        setAudioDuration(audio.duration || 0);
-      }).catch(() => {
-        setAudioLoading(false);
-      });
-    } else {
-      resolveYtId(song).then(() => {
-        const id = player.preloadedIds.current.get(song.id);
-        if (id && player.current?.id === song.id && audioRef.current) {
-          setAudioLoading(true);
-          audioRef.current.src = `${musicApiUrl}/api/music/stream/${id}`;
-          audioRef.current.load();
-          audioRef.current.play().then(() => setAudioLoading(false)).catch(() => setAudioLoading(false));
-        }
-      });
-    }
+    const audio = audioRef.current;
+    if (!audio) return;
+    setAudioLoading(true);
+    const query = `name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist || "")}`;
+    audio.src = `${musicApiUrl}/api/music/stream-audio?${query}`;
+    audio.load();
+    audio.play().then(() => {
+      setAudioLoading(false);
+      setAudioDuration(audio.duration || 0);
+    }).catch(() => {
+      setAudioLoading(false);
+    });
   }, [player.current?.id]);
-
-  React.useEffect(() => {
-    for (const song of player.queue) {
-      if (!song.youtubeId && !player.preloadedIds.current.has(song.id)) {
-        resolveYtId(song);
-      }
-    }
-  }, [player.queue]);
 
   React.useEffect(() => {
     const iv = setInterval(() => {
@@ -85,8 +49,7 @@ export function MusicPlayerBar() {
   if (!player.current) return null;
 
   const song = player.current;
-  const ytId = song.youtubeId ?? player.preloadedIds.current.get(song.id);
-  const isLoading = !ytId || resolvingIds.has(song.id) || audioLoading;
+  const isLoading = audioLoading;
   const hasPrev = player.queueIndex > 0;
   const hasNext = player.queueIndex < player.queue.length - 1;
   const pct = audioDuration > 0 ? (audioPosition / audioDuration) * 100 : 0;

@@ -6,6 +6,7 @@ import { now } from "../utils/dates.js";
 
 const MESSAGE_RETENTION_KEY = "messageRetentionDays";
 const MUSIC_API_URL_KEY = "musicApiUrl";
+const SPIDERX_API_KEY = "spiderxApiKey";
 
 export function getMessageRetentionDays() {
   const row = db.select().from(settings).where(eq(settings.key, MESSAGE_RETENTION_KEY)).get();
@@ -41,9 +42,27 @@ export function updateMusicApiUrl(url: string) {
   return { musicApiUrl: url };
 }
 
+export function getSpiderxApiKey(): string {
+  const row = db.select().from(settings).where(eq(settings.key, SPIDERX_API_KEY)).get();
+  return row?.value || "";
+}
+
+export function updateSpiderxApiKey(key: string) {
+  const updatedAt = now();
+  db.insert(settings)
+    .values({ key: SPIDERX_API_KEY, value: key, updatedAt })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value: key, updatedAt }
+    })
+    .run();
+  return { spiderxApiKey: key };
+}
+
 export function getSettings() {
   return {
     messageRetentionDays: getMessageRetentionDays(),
     musicApiUrl: getMusicApiUrl(),
+    spiderxApiKey: getSpiderxApiKey(),
   };
 }
