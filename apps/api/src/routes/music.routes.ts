@@ -44,21 +44,26 @@ export async function musicRoutes(app: FastifyInstance) {
   app.get("/music/stream/:videoId", async (req, reply) => {
     const { videoId } = req.params as { videoId: string };
     try {
-      const res = await fetch(`https://pipedapi.kavin.rocks/streams/${videoId}`);
-      const data = await res.json() as any;
-      const audio = data?.audioStreams?.[data.audioStreams.length - 1];
-      if (audio?.url) {
-        return reply.redirect(audio.url);
+      // Try normal first (works on non-blocked IPs)
+      try {
+        const result = await (youtubedl as any)(`https://www.youtube.com/watch?v=${videoId}`, {
+          format: "bestaudio",
+          getUrl: true,
+          noWarnings: true,
+          noCheckCertificate: true,
+        }) as string;
+        return reply.redirect(result.trim());
+      } catch {
+        // Fallback to Android client for blocked VPS IPs
+        const result = await (youtubedl as any)(`https://www.youtube.com/watch?v=${videoId}`, {
+          format: "best[ext=mp4]/best",
+          getUrl: true,
+          noWarnings: true,
+          noCheckCertificate: true,
+          "--extractor-args": "youtube:player_client=android",
+        }) as string;
+        return reply.redirect(result.trim());
       }
-      // Fallback to yt-dlp
-      const result = await (youtubedl as any)(`https://www.youtube.com/watch?v=${videoId}`, {
-        format: "bestaudio",
-        getUrl: true,
-        noWarnings: true,
-        noCheckCertificate: true,
-        extractorArgs: { youtube: { player_client: ["android"] } },
-      }) as string;
-      return reply.redirect(result.trim());
     } catch (err) {
       console.error("Stream error:", videoId, err);
       return reply.status(500).send({ error: "Stream failed" });
