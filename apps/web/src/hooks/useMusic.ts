@@ -1,6 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/services/api";
 
+export function useMusicApiUrl(): string {
+  const { data } = useQuery<{ url: string }>({
+    queryKey: ["music", "api-url"],
+    queryFn: () => api("/music-api-url"),
+    staleTime: 1000 * 60 * 5,
+  });
+  return data?.url || "";
+}
+
 export type MusicItem = {
   type: "song" | "artist" | "album";
   id: string;

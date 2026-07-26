@@ -9,6 +9,7 @@ import {
   ImagePlus,
   Loader2,
   MessageCircle,
+  Music,
   Plus,
   Radio,
   RefreshCcw,
@@ -130,6 +131,7 @@ export function AdminPage() {
   const [form, setForm] = React.useState<RoomForm>(blankRoom);
   const [editing, setEditing] = React.useState<Room | null>(null);
   const [retention, setRetention] = React.useState(30);
+  const [musicApiUrl, setMusicApiUrl] = React.useState("");
   const [copied, setCopied] = React.useState("");
   const [bannerUploading, setBannerUploading] = React.useState(false);
   const [bannerError, setBannerError] = React.useState("");
@@ -160,7 +162,7 @@ export function AdminPage() {
   const settingsQuery = useQuery({
     queryKey: ["admin", "settings"],
     queryFn: () =>
-      api<{ settings: { messageRetentionDays: number } }>("/admin/settings"),
+      api<{ settings: { messageRetentionDays: number; musicApiUrl: string } }>("/admin/settings"),
     enabled: me?.user.role === "admin",
   });
 
@@ -168,7 +170,10 @@ export function AdminPage() {
     if (settingsQuery.data?.settings.messageRetentionDays) {
       setRetention(settingsQuery.data.settings.messageRetentionDays);
     }
-  }, [settingsQuery.data?.settings.messageRetentionDays]);
+  if (settingsQuery.data?.settings.musicApiUrl) {
+      setMusicApiUrl(settingsQuery.data.settings.musicApiUrl);
+    }
+  }, [settingsQuery.data?.settings.messageRetentionDays, settingsQuery.data?.settings.musicApiUrl]);
 
   const saveRoom = useMutation({
     mutationFn: () => {
@@ -222,11 +227,11 @@ export function AdminPage() {
     !backgroundUploading &&
     !saveRoom.isPending;
 
-  const saveRetention = useMutation({
+  const saveSettings = useMutation({
     mutationFn: () =>
       api("/admin/settings", {
         method: "PATCH",
-        json: { messageRetentionDays: retention },
+        json: { messageRetentionDays: retention, musicApiUrl },
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["admin", "settings"] }),
@@ -1298,8 +1303,39 @@ export function AdminPage() {
                 />
               </label>
               <Button
-                onClick={() => saveRetention.mutate()}
-                disabled={saveRetention.isPending}
+                onClick={() => saveSettings.mutate()}
+                disabled={saveSettings.isPending}
+              >
+                <Save className="h-4 w-4" />
+                Salvar ajuste
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="max-w-xl glass-panel">
+            <CardHeader>
+              <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-lg bg-white/[0.08] text-primary">
+                <Music className="h-5 w-5" />
+              </div>
+              <CardTitle>API de Música</CardTitle>
+              <CardDescription>
+                URL do servidor de música. Altere se estiver hospedado separadamente.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-muted-foreground">
+                  URL da API de Música
+                </span>
+                <Input
+                  value={musicApiUrl}
+                  onChange={(event) => setMusicApiUrl(event.target.value)}
+                  placeholder="http://localhost:4000"
+                />
+              </label>
+              <Button
+                onClick={() => saveSettings.mutate()}
+                disabled={saveSettings.isPending}
               >
                 <Save className="h-4 w-4" />
                 Salvar ajuste

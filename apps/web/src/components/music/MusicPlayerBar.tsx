@@ -2,6 +2,7 @@ import * as React from "react";
 import { Play, X, Pause, ChevronDown, SkipBack, SkipForward, Loader2, Disc3, RotateCcw, RotateCw } from "lucide-react";
 import { useMusicPlayer, type PlayerSong } from "@/contexts/MusicPlayerContext";
 import { api, API_URL } from "@/services/api";
+import { useMusicApiUrl } from "@/hooks/useMusic";
 
 function CoverImg({ src, alt, className }: { src: string | null | undefined; alt: string; className: string }) {
   const [failed, setFailed] = React.useState(false);
@@ -11,6 +12,7 @@ function CoverImg({ src, alt, className }: { src: string | null | undefined; alt
 
 export function MusicPlayerBar() {
   const player = useMusicPlayer();
+  const musicApiUrl = useMusicApiUrl() || API_URL;
   const [expanded, setExpanded] = React.useState(false);
   const [resolvingIds, setResolvingIds] = React.useState<Set<string>>(new Set());
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
@@ -41,7 +43,7 @@ export function MusicPlayerBar() {
       const audio = audioRef.current;
       if (!audio) return;
       setAudioLoading(true);
-      audio.src = `${API_URL}/api/music/stream/${ytId}`;
+      audio.src = `${musicApiUrl}/api/music/stream/${ytId}`;
       audio.load();
       audio.play().then(() => {
         setAudioLoading(false);
@@ -54,7 +56,7 @@ export function MusicPlayerBar() {
         const id = player.preloadedIds.current.get(song.id);
         if (id && player.current?.id === song.id && audioRef.current) {
           setAudioLoading(true);
-          audioRef.current.src = `${API_URL}/api/music/stream/${id}`;
+          audioRef.current.src = `${musicApiUrl}/api/music/stream/${id}`;
           audioRef.current.load();
           audioRef.current.play().then(() => setAudioLoading(false)).catch(() => setAudioLoading(false));
         }
