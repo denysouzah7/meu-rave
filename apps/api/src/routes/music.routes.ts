@@ -50,7 +50,6 @@ export async function musicRoutes(app: FastifyInstance) {
         noWarnings: true,
         noCheckCertificate: true,
         extractorArgs: { youtube: { player_client: ["android"] } },
-        addHeader: ["User-Agent:com.google.android.youtube/19.09.37 (Linux; U; Android 13; US)"],
       }) as string;
       return reply.redirect(result.trim());
     } catch (err) {
