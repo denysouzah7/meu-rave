@@ -44,6 +44,13 @@ export async function musicRoutes(app: FastifyInstance) {
   app.get("/music/stream/:videoId", async (req, reply) => {
     const { videoId } = req.params as { videoId: string };
     try {
+      const res = await fetch(`https://pipedapi.kavin.rocks/streams/${videoId}`);
+      const data = await res.json() as any;
+      const audio = data?.audioStreams?.[data.audioStreams.length - 1];
+      if (audio?.url) {
+        return reply.redirect(audio.url);
+      }
+      // Fallback to yt-dlp
       const result = await (youtubedl as any)(`https://www.youtube.com/watch?v=${videoId}`, {
         format: "bestaudio",
         getUrl: true,
