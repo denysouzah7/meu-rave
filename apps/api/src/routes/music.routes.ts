@@ -41,15 +41,18 @@ export async function musicRoutes(app: FastifyInstance) {
     return { videoId };
   });
 
-  app.get("/music/stream/:videoId", { preHandler: [authenticate] }, async (req, reply) => {
+  app.get("/music/stream/:videoId", async (req, reply) => {
     const { videoId } = req.params as { videoId: string };
     try {
-      const url = await (youtubedl as any)(`https://www.youtube.com/watch?v=${videoId}`, {
+      const result = await (youtubedl as any)(`https://www.youtube.com/watch?v=${videoId}`, {
         format: "bestaudio",
         getUrl: true,
         noWarnings: true,
+        noCheckCertificate: true,
+        extractorArgs: { youtube: { player_client: ["android"] } },
+        addHeader: ["User-Agent:com.google.android.youtube/19.09.37 (Linux; U; Android 13; US)"],
       }) as string;
-      return reply.redirect(url.trim());
+      return reply.redirect(result.trim());
     } catch (err) {
       console.error("Stream error:", videoId, err);
       return reply.status(500).send({ error: "Stream failed" });
