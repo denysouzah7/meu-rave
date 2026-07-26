@@ -2,6 +2,7 @@ import * as React from "react";
 import { Search, Play, X, ChevronLeft, Disc3 } from "lucide-react";
 import { useMusicHome, useMusicSearch, type MusicItem } from "@/hooks/useMusic";
 import { useMusicPlayer, type PlayerSong } from "@/contexts/MusicPlayerContext";
+import { api } from "@/services/api";
 
 function CoverImg({ src, alt, className }: { src: string | null | undefined; alt: string; className: string }) {
   const [failed, setFailed] = React.useState(false);
@@ -27,8 +28,7 @@ export function MusicPage() {
     if (!activeId || !activeType) return;
     const fetchData = async () => {
       try {
-        const res = await fetch(`/api/music/${activeType}/${activeId}`);
-        const data = await res.json();
+        const data = await api<any>(`/music/${activeType}/${activeId}`);
         setFetchedSongs(data.songs ?? []);
         if (activeType === "artist") setAlbums(data.albums ?? []);
       } catch { setFetchedSongs([]); }

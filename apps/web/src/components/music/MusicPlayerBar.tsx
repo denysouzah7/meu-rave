@@ -54,7 +54,7 @@ export function MusicPlayerBar() {
         const id = player.preloadedIds.current.get(song.id);
         if (id && player.current?.id === song.id && audioRef.current) {
           setAudioLoading(true);
-          audioRef.current.src = `/api/music/stream/${id}`;
+          audioRef.current.src = `${API_URL}/api/music/stream/${id}`;
           audioRef.current.load();
           audioRef.current.play().then(() => setAudioLoading(false)).catch(() => setAudioLoading(false));
         }
