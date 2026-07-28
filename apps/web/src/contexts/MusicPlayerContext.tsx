@@ -14,6 +14,7 @@ type PlayerContextValue = PlayerState & {
   next: () => void;
   prev: () => void;
   stop: () => void;
+  setIsPlaying: (v: boolean) => void;
   setYoutubeId: (songId: string, youtubeId: string) => void;
   preloadedIds: React.MutableRefObject<Map<string, string>>;
 };
@@ -66,7 +67,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     preloadedIds.current.set(songId, youtubeId);
   };
 
-  const value: PlayerContextValue = { ...state, play, next, prev, stop, setYoutubeId, preloadedIds };
+  const value: PlayerContextValue = { ...state, play, next, prev, stop, setIsPlaying: (v: boolean) => setState(s => ({ ...s, isPlaying: v })), setYoutubeId, preloadedIds };
 
   return (
     <PlayerContext.Provider value={value}>

@@ -27,12 +27,13 @@ export function MusicPlayerBar() {
     setAudioLoading(true);
     const query = `name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist || "")}`;
     audio.src = `${musicApiUrl}/api/music/stream-audio?${query}`;
-    audio.load();
     audio.play().then(() => {
       setAudioLoading(false);
       setAudioDuration(audio.duration || 0);
     }).catch(() => {
       setAudioLoading(false);
+      // Mobile blocked autoplay - keep song loaded, show play button
+      player.setIsPlaying(false);
     });
   }, [player.current?.id]);
 
@@ -60,7 +61,7 @@ export function MusicPlayerBar() {
 
   return (
     <>
-      <audio ref={audioRef} preload="none" style={{ display: "none" }} onEnded={() => player.next()} />
+      <audio ref={audioRef} preload="none" style={{ position: "absolute", width: 0, height: 0, opacity: 0 }} onEnded={() => player.next()} />
       {expanded ? (
         <ExpandedPlayer song={song} pct={pct} formatTime={formatTime} audioPosition={audioPosition} audioDuration={audioDuration} isLoading={isLoading} hasPrev={hasPrev} hasNext={hasNext} player={player} togglePlay={togglePlay} seekForward={seekForward} seekBackward={seekBackward} onClose={() => setExpanded(false)} />
       ) : (
