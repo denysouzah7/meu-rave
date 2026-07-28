@@ -27,8 +27,7 @@ export function MusicPlayerBar() {
     setAudioLoading(true);
     const query = `name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist || "")}`;
     audio.src = `${musicApiUrl}/api/music/stream-audio?${query}`;
-    audio.load();
-    setAudioLoading(false);
+    audio.play().then(() => {}).catch(() => {});
   }, [player.current?.id]);
 
   React.useEffect(() => {
@@ -44,18 +43,18 @@ export function MusicPlayerBar() {
   if (!player.current) return null;
 
   const song = player.current;
-  const isLoading = false; // No autoplay, always show play button
+  const isLoading = audioLoading;
   const hasPrev = player.queueIndex > 0;
   const hasNext = player.queueIndex < player.queue.length - 1;
   const pct = audioDuration > 0 ? (audioPosition / audioDuration) * 100 : 0;
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-  const togglePlay = () => { const a = audioRef.current; if (!a) return; if (a.paused) { a.play().then(() => player.setIsPlaying(true)).catch(() => {}); } else { a.pause(); player.setIsPlaying(false); } };
+  const togglePlay = () => { const a = audioRef.current; if (!a) return; if (a.paused) a.play().catch(() => {}); else a.pause(); };
   const seekForward = () => { if (audioRef.current) audioRef.current.currentTime = Math.min(audioRef.current.currentTime + 15, audioRef.current.duration || 0); };
   const seekBackward = () => { if (audioRef.current) audioRef.current.currentTime = Math.max(audioRef.current.currentTime - 15, 0); };
 
   return (
     <>
-      <audio ref={audioRef} preload="auto" style={{ position: "absolute", width: 0, height: 0, opacity: 0 }} onEnded={() => player.next()} />
+      <audio ref={audioRef} preload="auto" playsInline style={{ display: "none" }} onEnded={() => player.next()} />
       {expanded ? (
         <ExpandedPlayer song={song} pct={pct} formatTime={formatTime} audioPosition={audioPosition} audioDuration={audioDuration} isLoading={isLoading} hasPrev={hasPrev} hasNext={hasNext} player={player} togglePlay={togglePlay} seekForward={seekForward} seekBackward={seekBackward} onClose={() => setExpanded(false)} />
       ) : (
