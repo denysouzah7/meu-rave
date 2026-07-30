@@ -27,7 +27,10 @@ export function MusicPlayerBar() {
     setAudioLoading(true);
     const query = `name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist || "")}`;
     audio.src = `${musicApiUrl}/api/music/stream-audio?${query}`;
-    audio.play().then(() => {}).catch(() => {});
+    audio.play().then(() => {
+      setAudioLoading(false);
+      setAudioDuration(audio.duration || 0);
+    }).catch(() => { setAudioLoading(false); });
   }, [player.current?.id]);
 
   React.useEffect(() => {
