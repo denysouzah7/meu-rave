@@ -1,0 +1,16 @@
+{
+  "name": "Haru Space",
+  "short_name": "Haru",
+  "description": "Grupos e raves com chat em tempo real",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b141a",
+  "theme_color": "#0b141a",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
