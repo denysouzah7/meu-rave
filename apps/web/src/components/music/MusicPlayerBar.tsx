@@ -57,7 +57,7 @@ export function MusicPlayerBar() {
 
   return (
     <>
-      <audio ref={audioRef} preload="auto" playsInline style={{ display: "none" }} onEnded={() => player.next()} />
+      <audio ref={audioRef} preload="none" controls style={{ width: 300 }} onEnded={() => player.next()} />
       {expanded ? (
         <ExpandedPlayer song={song} pct={pct} formatTime={formatTime} audioPosition={audioPosition} audioDuration={audioDuration} isLoading={isLoading} hasPrev={hasPrev} hasNext={hasNext} player={player} togglePlay={togglePlay} seekForward={seekForward} seekBackward={seekBackward} onClose={() => setExpanded(false)} />
       ) : (
