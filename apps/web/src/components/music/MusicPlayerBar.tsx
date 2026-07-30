@@ -25,12 +25,23 @@ export function MusicPlayerBar() {
     const audio = audioRef.current;
     if (!audio) return;
     setAudioLoading(true);
-    const query = `name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist || "")}`;
-    audio.src = `${musicApiUrl}/api/music/stream-audio?${query}`;
-    audio.play().then(() => {
-      setAudioLoading(false);
-      setAudioDuration(audio.duration || 0);
-    }).catch(() => { setAudioLoading(false); });
+    const resolveAndPlay = async () => {
+      try {
+        const data = await api<{ videoId: string | null }>(
+          `/music/youtube-id?name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist || "")}`
+        );
+        if (data.videoId) {
+          audio.src = `${musicApiUrl}/api/music/stream/${data.videoId}`;
+          audio.play().then(() => {
+            setAudioLoading(false);
+            setAudioDuration(audio.duration || 0);
+          }).catch(() => { setAudioLoading(false); });
+        } else {
+          setAudioLoading(false);
+        }
+      } catch { setAudioLoading(false); }
+    };
+    resolveAndPlay();
   }, [player.current?.id]);
 
   React.useEffect(() => {
@@ -57,7 +68,7 @@ export function MusicPlayerBar() {
 
   return (
     <>
-      <audio ref={audioRef} preload="none" controls style={{ width: 300 }} onEnded={() => player.next()} />
+      <audio ref={audioRef} preload="none" playsInline style={{ display: "none" }} onEnded={() => player.next()} />
       {expanded ? (
         <ExpandedPlayer song={song} pct={pct} formatTime={formatTime} audioPosition={audioPosition} audioDuration={audioDuration} isLoading={isLoading} hasPrev={hasPrev} hasNext={hasNext} player={player} togglePlay={togglePlay} seekForward={seekForward} seekBackward={seekBackward} onClose={() => setExpanded(false)} />
       ) : (

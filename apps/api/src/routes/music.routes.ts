@@ -45,19 +45,33 @@ export async function musicRoutes(app: FastifyInstance) {
   app.get("/music/stream-audio", async (req, reply) => {
     const { name, artist } = req.query as { name?: string; artist?: string };
     if (!name) return reply.status(400).send({ error: "name is required" });
-    const apiKey = getSpiderxApiKey();
-    if (!apiKey) return reply.status(500).send({ error: "SpiderX API key not configured" });
+    const search = encodeURIComponent(`${name} ${artist || ""}`.trim());
+    const key = getSpiderxApiKey();
+
+    if (key) {
+      try {
+        const res = await fetch(`https://api.spiderx.com.br/api/downloads/play-audio?search=${search}&api_key=${key}`);
+        const data = await res.json() as any;
+        if (data?.url) return reply.redirect(data.url);
+      } catch {}
+    }
+
     try {
-      const search = encodeURIComponent(`${name} ${artist || ""}`.trim());
-      const res = await fetch(`https://api.spiderx.com.br/api/downloads/play-audio?search=${search}&api_key=${apiKey}`);
-      const data = await res.json() as any;
-      if (data?.url) {
-        return reply.redirect(data.url);
+      const url = await (youtubedl as any)(`ytsearch:${search}`, {
+        format: "bestaudio", getUrl: true, noWarnings: true, noCheckCertificate: true,
+      }) as string;
+      return reply.redirect(url.trim());
+    } catch {
+      try {
+        const url = await (youtubedl as any)(`ytsearch:${search}`, {
+          format: "best[ext=mp4]/best", getUrl: true, noWarnings: true, noCheckCertificate: true,
+          "--extractor-args": "youtube:player_client=android",
+        }) as string;
+        return reply.redirect(url.trim());
+      } catch (e) {
+        console.error("Stream error:", e);
+        return reply.status(500).send({ error: "Stream failed" });
       }
-      return reply.status(500).send({ error: "No audio URL returned" });
-    } catch (err) {
-      console.error("SpiderX error:", err);
-      return reply.status(500).send({ error: "SpiderX failed" });
     }
   });
 
